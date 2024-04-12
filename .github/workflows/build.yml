@@ -1,6 +1,7 @@
 name: Build Wine
 
 on:
+  pull_request:
   push:
   workflow_dispatch:
 
