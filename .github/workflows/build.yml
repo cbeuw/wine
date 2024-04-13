@@ -177,13 +177,6 @@ jobs:
           pushd ${{ env.BUILDROOT }}/wine32on64
           make install-lib DESTDIR="$GITHUB_WORKSPACE/${{ env.WINE_INSTALLROOT }}"
           popd
-  
-      - name: Install DXVK
-        run: |
-          DXVK_URL=$(curl -s https://api.github.com/repos/Gcenx/DXVK-MacOS/releases/latest | jq -r '.assets[] | select(.browser_download_url | contains("dxvk-macOS")) | .browser_download_url')
-          curl -L -o dxvk.tar.gz $DXVK_URL
-          tar -xzf dxvk.tar.gz --strip-components=1
-          rm dxvk.tar.gz
 
       - name: Grab Verbs From Winetricks
         run: |
@@ -200,9 +193,7 @@ jobs:
 
           cp -a $(brew --prefix winetricks)/bin/winetricks Libraries
           cp -a verbs.txt Libraries
-
-          cp -a x32 Libraries/DXVK
-          cp -a x64 Libraries/DXVK
+          cp -a DXVK Libraries
 
       - name: Copy External Libs
         run: |
