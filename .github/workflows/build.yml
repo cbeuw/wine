@@ -245,6 +245,13 @@ jobs:
               "libxcb.1"
           )
 
+          FFMPEG_LIBS=(
+            "libavfilter.9"
+            "libavformat.60"
+            "libavcodec.60"
+            "libavutil.58"
+          )
+
           GSTREAMER_LIBS=(
               "libgstapplemedia"
               "libgstasf"
@@ -257,6 +264,7 @@ jobs:
               "libgstdeinterlace"
               "libgstid3demux"
               "libgstisomp4"
+              "libgstlibav"
               "libgstopengl"
               "libgstplayback"
               "libgsttypefindfunctions"
@@ -269,6 +277,11 @@ jobs:
           for i in "${LIBS[@]}"
           do
               cp -Lr $(brew --prefix)/lib/"$i".dylib Libraries/Wine/lib
+          done
+
+          for i in "${FFMPEG_LIBS[@]}"
+          do
+              cp -Lr $(brew --prefix ffmpeg@6)/lib/"$i".dylib Libraries/Wine/lib
           done
 
           mkdir Libraries/Wine/lib/gstreamer-1.0
