@@ -18,8 +18,6 @@
 #ifndef __WINE_SSPI_H__
 #define __WINE_SSPI_H__
 
-#include "wine/winheader_enter.h"
-
 /* FIXME: #include <sdkddkver.h> */
 
 #ifdef __cplusplus
@@ -71,11 +69,16 @@ typedef SecHandle CtxtHandle;
 typedef PSecHandle PCtxtHandle;
 #endif
 
+#if defined(_NTDEF_) || defined(_WINNT_)
+typedef LARGE_INTEGER _SECURITY_INTEGER, SECURITY_INTEGER,*PSECURITY_INTEGER;
+#else
 typedef struct _SECURITY_INTEGER
 {
     ULONG LowPart;
     LONG  HighPart;
 } SECURITY_INTEGER, *PSECURITY_INTEGER;
+#endif
+
 typedef SECURITY_INTEGER TimeStamp, *PTimeStamp;
 
 #ifndef __UNICODE_STRING_DEFINED__
@@ -523,7 +526,7 @@ typedef struct _SecPkgContext_StreamSizes
     ULONG cbHeader;
     ULONG cbTrailer;
     ULONG cbMaximumMessage;
-    ULONG cbBuffers;
+    ULONG cBuffers;
     ULONG cbBlockSize;
 } SecPkgContext_StreamSizes, *PSecPkgContext_StreamSizes;
 
@@ -929,7 +932,5 @@ typedef PSecurityFunctionTableW (SEC_ENTRY *INIT_SECURITY_INTERFACE_W)(void);
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* ndef __WINE_SSPI_H__ */

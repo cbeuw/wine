@@ -21,8 +21,6 @@
 
 #include "dshow.h"
 
-#include "wine/winheader_enter.h"
-
 HRESULT WINAPI CopyMediaType(AM_MEDIA_TYPE * pDest, const AM_MEDIA_TYPE *pSrc);
 void WINAPI FreeMediaType(AM_MEDIA_TYPE * pMediaType);
 AM_MEDIA_TYPE * WINAPI CreateMediaType(AM_MEDIA_TYPE const * pSrc);
@@ -38,6 +36,7 @@ struct strmbase_pin
     struct strmbase_filter *filter;
     PIN_DIRECTION dir;
     WCHAR name[128];
+    WCHAR id[128];
     IPin *peer;
     AM_MEDIA_TYPE mt;
 
@@ -107,8 +106,6 @@ struct strmbase_sink_ops
 };
 
 /* Base Pin */
-HRESULT WINAPI BaseOutputPinImpl_GetDeliveryBuffer(struct strmbase_source *pin, IMediaSample **sample, REFERENCE_TIME *start, REFERENCE_TIME *stop, DWORD flags);
-HRESULT WINAPI BaseOutputPinImpl_InitAllocator(struct strmbase_source *pin, IMemAllocator **allocator);
 HRESULT WINAPI BaseOutputPinImpl_DecideAllocator(struct strmbase_source *pin, IMemInputPin *peer, IMemAllocator **allocator);
 HRESULT WINAPI BaseOutputPinImpl_AttemptConnection(struct strmbase_source *pin, IPin *peer, const AM_MEDIA_TYPE *mt);
 
@@ -123,7 +120,6 @@ void strmbase_sink_cleanup(struct strmbase_sink *pin);
 struct strmbase_filter
 {
     IBaseFilter IBaseFilter_iface;
-    IPropertyBag IPropertyBag_iface;
     IUnknown IUnknown_inner;
     IUnknown *outer_unk;
     LONG refcount;
@@ -287,5 +283,3 @@ struct strmbase_renderer_ops
 void strmbase_renderer_init(struct strmbase_renderer *filter, IUnknown *outer,
         const CLSID *clsid, const WCHAR *sink_name, const struct strmbase_renderer_ops *ops);
 void strmbase_renderer_cleanup(struct strmbase_renderer *filter);
-
-#include "wine/winheader_exit.h"

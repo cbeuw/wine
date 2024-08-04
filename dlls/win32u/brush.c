@@ -18,6 +18,10 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+#if 0
+#pragma makedep unix
+#endif
+
 #include <stdarg.h>
 #include <string.h>
 
@@ -28,13 +32,6 @@
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(gdi);
-
-#ifdef __i386_on_x86_64__
-#undef free
-#define heapfree(x) HeapFree(GetProcessHeap(), 0, x)
-#else
-#define heapfree(x) free(x)
-#endif
 
 /* GDI logical brush object */
 typedef struct
@@ -144,16 +141,23 @@ BOOL store_brush_pattern( LOGBRUSH *brush, struct brush_pattern *pattern )
 void free_brush_pattern( struct brush_pattern *pattern )
 {
     if (pattern->bits.free) pattern->bits.free( &pattern->bits );
-    heapfree( pattern->info );
+    free( pattern->info );
 }
 
 /**********************************************************************
- *           __wine_get_brush_bitmap_info    (win32u.@)
+ *           NtGdiIcmBrushInfo    (win32u.@)
  */
-BOOL CDECL __wine_get_brush_bitmap_info( HBRUSH handle, BITMAPINFO *info, void *bits, UINT *usage )
+BOOL WINAPI NtGdiIcmBrushInfo( HDC hdc, HBRUSH handle, BITMAPINFO *info, void *bits,
+                               ULONG *bits_size, UINT *usage, BOOL *unk, UINT mode )
 {
     BRUSHOBJ *brush;
     BOOL ret = FALSE;
+
+    if (mode)
+    {
+        FIXME( "unsupported mode %u\n", mode );
+        return FALSE;
+    }
 
     if (!(brush = GDI_GetObjPtr( handle, NTGDI_OBJ_BRUSH ))) return FALSE;
 
@@ -186,6 +190,7 @@ BOOL CDECL __wine_get_brush_bitmap_info( HBRUSH handle, BITMAPINFO *info, void *
             else memcpy( bits, brush->pattern.bits.ptr,
                          brush->pattern.info->bmiHeader.biSizeImage );
         }
+        if (bits_size) *bits_size = brush->pattern.info->bmiHeader.biSizeImage;
         if (usage) *usage = brush->pattern.usage;
         ret = TRUE;
     }
@@ -211,7 +216,7 @@ HBRUSH create_brush( const LOGBRUSH *brush )
     }
 
     free_brush_pattern( &ptr->pattern );
-    heapfree( ptr );
+    free( ptr );
     return 0;
 }
 
@@ -225,7 +230,7 @@ HBRUSH WINAPI NtGdiCreateHatchBrushInternal( INT style, COLORREF color, BOOL pen
 {
     LOGBRUSH logbrush;
 
-    TRACE( "%d %06x\n", style, color );
+    TRACE( "%d %s\n", style, debugstr_color(color) );
 
     logbrush.lbStyle = BS_HATCHED;
     logbrush.lbColor = color;
@@ -265,8 +270,8 @@ HBRUSH WINAPI NtGdiCreateDIBBrush( const void *data, UINT coloruse, UINT size,
     if (!data)
         return NULL;
 
-    TRACE( "%p %dx%d %dbpp\n", info, info->bmiHeader.biWidth,
-           info->bmiHeader.biHeight,  info->bmiHeader.biBitCount );
+    TRACE( "%p %dx%d %dbpp\n", info, (int)info->bmiHeader.biWidth,
+           (int)info->bmiHeader.biHeight,  (int)info->bmiHeader.biBitCount );
 
     logbrush.lbStyle = BS_DIBPATTERNPT;
     logbrush.lbColor = coloruse;
@@ -285,7 +290,7 @@ HBRUSH WINAPI NtGdiCreateSolidBrush( COLORREF color, HBRUSH brush )
 {
     LOGBRUSH logbrush;
 
-    TRACE("%06x\n", color );
+    TRACE("%s\n", debugstr_color(color) );
 
     logbrush.lbStyle = BS_SOLID;
     logbrush.lbColor = color;
@@ -341,7 +346,7 @@ static BOOL BRUSH_DeleteObject( HGDIOBJ handle )
 
     if (!brush) return FALSE;
     free_brush_pattern( &brush->pattern );
-    heapfree( brush );
+    free( brush );
     return TRUE;
 }
 

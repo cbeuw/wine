@@ -19,8 +19,6 @@
 #ifndef __MS_ASN1_H__
 #define __MS_ASN1_H__
 
-#include "wine/winheader_enter.h"
-
 #include <pshpack8.h>
 
 #ifdef __cplusplus
@@ -47,6 +45,10 @@ typedef ASN1uint8_t ASN1bool_t;
 typedef ASN1uint16_t ASN1choice_t;
 typedef ASN1uint32_t ASN1magic_t;
 typedef ASN1ztcharstring_t ASN1objectdescriptor_t;
+
+#define ASN1_PUBLIC DECLSPEC_IMPORT
+#define ASN1API     __stdcall
+#define ASN1CALL    __stdcall
 
 #define ASN1_MAKE_VERSION(major,minor) (((major) << 16) | (minor))
 #define ASN1_THIS_VERSION ASN1_MAKE_VERSION(1,0)
@@ -366,7 +368,5 @@ void         WINAPI ASN1ztcharstring_free(ASN1charstring_t*);
 #endif
 
 #include <poppack.h>
-
-#include "wine/winheader_exit.h"
 
 #endif /* __MS_ASN1_H__ */

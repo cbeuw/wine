@@ -19,8 +19,6 @@
 #ifndef _NTDDK_
 #define _NTDDK_
 
-#include "wine/winheader_enter.h"
-
 /* Note: We will probably have to duplicate everything ultimately :-( */
 #include <ddk/wdm.h>
 
@@ -165,7 +163,7 @@ typedef struct _RTL_SPLAY_LINKS
 struct _RTL_GENERIC_TABLE;
 
 typedef RTL_GENERIC_COMPARE_RESULTS (WINAPI *PRTL_GENERIC_COMPARE_ROUTINE)(struct _RTL_GENERIC_TABLE *, void *, void *);
-typedef void * (WINAPI *PRTL_GENERIC_ALLOCATE_ROUTINE)(struct _RTL_GENERIC_TABLE *, LONG);
+typedef void * (__WINE_ALLOC_SIZE(2) WINAPI *PRTL_GENERIC_ALLOCATE_ROUTINE)(struct _RTL_GENERIC_TABLE *, LONG);
 typedef void (WINAPI *PRTL_GENERIC_FREE_ROUTINE)(struct _RTL_GENERIC_TABLE *Table, void *);
 
 typedef struct _RTL_GENERIC_TABLE
@@ -195,7 +193,7 @@ struct _RTL_AVL_TABLE;
 
 typedef RTL_GENERIC_COMPARE_RESULTS (WINAPI *PRTL_AVL_COMPARE_ROUTINE)(struct _RTL_AVL_TABLE *, void *, void *);
 
-typedef void * (WINAPI *PRTL_AVL_ALLOCATE_ROUTINE)(struct _RTL_AVL_TABLE *, LONG);
+typedef void * (__WINE_ALLOC_SIZE(2) WINAPI *PRTL_AVL_ALLOCATE_ROUTINE)(struct _RTL_AVL_TABLE *, LONG);
 
 typedef void (WINAPI *PRTL_AVL_FREE_ROUTINE )(struct _RTL_AVL_TABLE *, void *buffer);
 
@@ -267,13 +265,24 @@ NTSTATUS  WINAPI PsSetCreateProcessNotifyRoutine(PCREATE_PROCESS_NOTIFY_ROUTINE,
 NTSTATUS  WINAPI PsSetCreateProcessNotifyRoutineEx(PCREATE_PROCESS_NOTIFY_ROUTINE_EX,BOOLEAN);
 NTSTATUS  WINAPI PsSetCreateThreadNotifyRoutine(PCREATE_THREAD_NOTIFY_ROUTINE);
 NTSTATUS  WINAPI PsSetLoadImageNotifyRoutine(PLOAD_IMAGE_NOTIFY_ROUTINE);
+NTSTATUS  WINAPI PsSetLoadImageNotifyRoutineEx(PLOAD_IMAGE_NOTIFY_ROUTINE,ULONG_PTR);
+LONG      WINAPI RtlCompareString(const STRING*,const STRING*,BOOLEAN);
+void      WINAPI RtlCopyString(STRING*,const STRING*);
+BOOLEAN   WINAPI RtlEqualString(const STRING*,const STRING*,BOOLEAN);
 void *    WINAPI RtlGetElementGenericTable(PRTL_GENERIC_TABLE,ULONG);
 void      WINAPI RtlInitializeGenericTable(PRTL_GENERIC_TABLE,PRTL_GENERIC_COMPARE_ROUTINE,PRTL_GENERIC_ALLOCATE_ROUTINE,PRTL_GENERIC_FREE_ROUTINE,void *);
 void      WINAPI RtlInitializeGenericTableAvl(PRTL_AVL_TABLE,PRTL_AVL_COMPARE_ROUTINE,PRTL_AVL_ALLOCATE_ROUTINE, PRTL_AVL_FREE_ROUTINE,void *);
 void      WINAPI RtlInsertElementGenericTableAvl(PRTL_AVL_TABLE,void *,ULONG,BOOL*);
 void *    WINAPI RtlLookupElementGenericTable(PRTL_GENERIC_TABLE,void *);
+void      WINAPI RtlMapGenericMask(ACCESS_MASK*,const GENERIC_MAPPING*);
 ULONG     WINAPI RtlNumberGenericTableElements(PRTL_GENERIC_TABLE);
+BOOLEAN   WINAPI RtlPrefixUnicodeString(const UNICODE_STRING*,const UNICODE_STRING*,BOOLEAN);
+NTSTATUS  WINAPI RtlUpcaseUnicodeString(UNICODE_STRING*,const UNICODE_STRING*,BOOLEAN);
+char      WINAPI RtlUpperChar(char);
+void      WINAPI RtlUpperString(STRING*,const STRING*);
 
-#include "wine/winheader_exit.h"
+#ifndef _WIN64
+ULONGLONG WINAPI RtlLargeIntegerDivide(ULONGLONG,ULONGLONG,ULONGLONG*);
+#endif
 
 #endif

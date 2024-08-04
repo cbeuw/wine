@@ -23,8 +23,6 @@
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
-#define NONAMELESSUNION
-#define NONAMELESSSTRUCT
 #include "windef.h"
 #include "winbase.h"
 #include "winreg.h"
@@ -190,7 +188,11 @@ static RTL_USER_PROCESS_PARAMETERS *create_process_params( const WCHAR *filename
     }
     RtlFreeUnicodeString( &newdirW );
 
-    if (flags & CREATE_NEW_PROCESS_GROUP) params->ConsoleFlags = 1;
+    if (!(flags & CREATE_NEW_PROCESS_GROUP))
+        params->ProcessGroupId = NtCurrentTeb()->Peb->ProcessParameters->ProcessGroupId;
+    else if (!(flags & CREATE_NEW_CONSOLE))
+        params->ConsoleFlags = 1;
+
     if (flags & CREATE_NEW_CONSOLE) params->ConsoleHandle = CONSOLE_HANDLE_ALLOC;
     else if (!(flags & DETACHED_PROCESS))
     {
@@ -258,13 +260,14 @@ struct _PROC_THREAD_ATTRIBUTE_LIST
 static NTSTATUS create_nt_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBUTES *psa,
                                    SECURITY_ATTRIBUTES *tsa, DWORD process_flags,
                                    RTL_USER_PROCESS_PARAMETERS *params,
-                                   RTL_USER_PROCESS_INFORMATION *info, HANDLE parent,
+                                   RTL_USER_PROCESS_INFORMATION *info,
+                                   HANDLE parent, USHORT machine,
                                    const struct proc_thread_attr *handle_list,
                                    const struct proc_thread_attr *job_list)
 {
     OBJECT_ATTRIBUTES process_attr, thread_attr;
     PS_CREATE_INFO create_info;
-    ULONG_PTR buffer[offsetof( PS_ATTRIBUTE_LIST, Attributes[8] ) / sizeof(ULONG_PTR)];
+    ULONG_PTR buffer[offsetof( PS_ATTRIBUTE_LIST, Attributes[9] ) / sizeof(ULONG_PTR)];
     PS_ATTRIBUTE_LIST *attr = (PS_ATTRIBUTE_LIST *)buffer;
     UNICODE_STRING nameW;
     NTSTATUS status;
@@ -331,6 +334,14 @@ static NTSTATUS create_nt_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBUT
             attr->Attributes[pos].ReturnLength = NULL;
             pos++;
         }
+        if (machine)
+        {
+            attr->Attributes[pos].Attribute    = PS_ATTRIBUTE_MACHINE_TYPE;
+            attr->Attributes[pos].Size         = sizeof(machine);
+            attr->Attributes[pos].Value        = machine;
+            attr->Attributes[pos].ReturnLength = NULL;
+            pos++;
+        }
         attr->TotalLength = offsetof( PS_ATTRIBUTE_LIST, Attributes[pos] );
 
         InitializeObjectAttributes( &process_attr, NULL, 0, NULL, psa ? psa->lpSecurityDescriptor : NULL );
@@ -372,7 +383,7 @@ static NTSTATUS create_vdm_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBU
               winevdm, params->ImagePathName.Buffer, params->CommandLine.Buffer );
     RtlInitUnicodeString( &params->ImagePathName, winevdm );
     RtlInitUnicodeString( &params->CommandLine, newcmdline );
-    status = create_nt_process( token, debug, psa, tsa, flags, params, info, NULL, NULL, NULL );
+    status = create_nt_process( token, debug, psa, tsa, flags, params, info, 0, 0, NULL, NULL );
     HeapFree( GetProcessHeap(), 0, newcmdline );
     return status;
 }
@@ -401,7 +412,7 @@ static NTSTATUS create_cmd_process( HANDLE token, HANDLE debug, SECURITY_ATTRIBU
     swprintf( newcmdline, len, L"%s /s/c \"%s\"", comspec, params->CommandLine.Buffer );
     RtlInitUnicodeString( &params->ImagePathName, comspec );
     RtlInitUnicodeString( &params->CommandLine, newcmdline );
-    status = create_nt_process( token, debug, psa, tsa, flags, params, info, NULL, NULL, NULL );
+    status = create_nt_process( token, debug, psa, tsa, flags, params, info, 0, 0, NULL, NULL );
     RtlFreeHeap( GetProcessHeap(), 0, newcmdline );
     return status;
 }
@@ -546,6 +557,159 @@ static WCHAR * hack_steam_exe(const WCHAR *tidy_cmdline, WCHAR *steam_dir)
     return new_command_line;
 }
 
+static WCHAR *hack_replace_command_line(const WCHAR *cmd)
+{
+    static const struct
+    {
+        const WCHAR *substring;
+        const WCHAR *replacement;
+    }
+    replacements[] =
+    {
+        /* Hack 22686 */
+        { L"\\ELDEN RING\\Game\\start_protected_game.exe",
+          L"\\ELDEN RING\\Game\\eldenring.exe" },
+
+        /* Hack 22753 */
+        { L"\\ARMORED CORE VI FIRES OF RUBICON\\Game\\start_protected_game.exe",
+          L"\\ARMORED CORE VI FIRES OF RUBICON\\Game\\armoredcore6.exe" },
+
+        /* Hack 22704 */
+        { L"\\Baldurs Gate 3\\Launcher\\LariLauncher.exe",
+          L"\\Baldurs Gate 3\\bin\\bg3_dx11.exe" },
+    };
+    WCHAR *new_command, *pos;
+    SIZE_T substring_len, replacement_len, new_len;
+    unsigned int i;
+
+    if (!cmd) return NULL;
+
+    for (i = 0; i < ARRAY_SIZE(replacements); ++i)
+    {
+        pos = wcsstr(cmd, replacements[i].substring);
+        if (!pos) continue;
+
+        substring_len = lstrlenW(replacements[i].substring);
+        replacement_len = lstrlenW(replacements[i].replacement);
+        new_len = lstrlenW(cmd);
+        if (replacement_len > substring_len)
+            new_len += replacement_len - substring_len;
+
+        new_command = RtlAllocateHeap(GetProcessHeap(), 0, sizeof(WCHAR) * (new_len + 1));
+
+        if (!new_command) return NULL;
+
+        lstrcpyW(new_command, cmd);
+        new_command[pos - cmd] = 0;
+        lstrcatW(new_command, replacements[i].replacement);
+        lstrcatW(new_command, pos + substring_len);
+
+        FIXME("HACK: replacing %s with %s\n", debugstr_w(cmd), debugstr_w(new_command));
+
+        return new_command;
+    }
+
+    return NULL;
+}
+
+static const WCHAR *hack_append_command_line( const WCHAR *cmd, const WCHAR *cmd_line )
+{
+    /* CROSSOVER HACK: bug 13322 (winehq bug 39403)
+     * Insert --no-sandbox in command line of Steam's web helper process to
+     * work around rendering problems.
+     * CROSSOVER HACK: bug 17315
+     * Insert --in-process-gpu in command line of Steam's web helper process to
+     * work around page rendering problems.
+     * CROSSOVER HACK: bug 21883
+     * Insert --disable-gpu as well.
+     */
+    /* CROSSOVER HACK: bug 18582
+     * Add --in-process-gpu and --use-gl=swiftshader to the Rockstar Social Club's
+     * web helper process command line.
+     */
+    /* CROSSOVER HACK: bug 19537
+     * Add --in-process-gpu to Foxmail's command line.
+     */
+    /* CROSSOVER HACK: bug 19252
+     * Add --use-angle=vulkan to Ubisoft Connect.
+     */
+    /* CROSSOVER HACK: bug 20889
+     * Add --in-process-gpu and --use-gl=swiftshader to qwSubprocess.exe, another
+     * CEF helper used by Quicken. It already passes --no-sandbox.
+     */
+    /* CROSSOVER HACK: bug 20645
+     * Add --in-process-gpu and --use-gl=swiftshader to the Paradox Launcher.
+     */
+    /* CROSSOVER HACK: bug 19610
+     * Add --in-process-gpu to Battle.net.
+     */
+    /* CROSSOVER HACK: bug 22330
+     * Add --in-process-gpu --use-gl=swiftshader --no-sandbox to msedgewebview2.exe
+     * used by Quicken.
+     */
+    /* CROSSOVER HACK: bug 22598
+     * Add --launcher-skip to the Witcher 3 prelauncher.
+     */
+    /* CROSSOVER HACK: bug 20279
+     * Add --in-process-gpu to the Warframe launcher (...\Tools\Launcher.exe), with
+     * various parent directories per server type.
+    */
+    /* CROSSOVER HACK: bug 22769
+     * Add --in-process-gpu --use-gl=swiftshader to cefsubprocess.exe for Marvel Snap.
+     */
+    /* CROSSOVER HACK: bug 23066
+     * Add  --no-sandbox --in-process-gpu --use-gl=swiftshader to t2gp.exe for
+     * the 2k launcher (e.g. Mafia: Definitive Edition).
+     */
+    /* CROSSOVER HACK: bug 23061
+     * Add `/devicetype DX12` to Anno 1800 to force DX12.
+     */
+    /* CROSSOVER HACK: bug 23949
+     * Add --in-process-gpu to HYP.exe.
+     */
+
+    static const struct
+    {
+        const WCHAR *exe_name;
+        const WCHAR *append;
+        const WCHAR *required_args;
+        const WCHAR *forbidden_args;
+    }
+    options[] =
+    {
+        {L"steamwebhelper.exe", L" --no-sandbox --in-process-gpu --disable-gpu", NULL, L"--type=crashpad-handler"},
+        {L"SocialClubHelper.exe", L" --in-process-gpu --use-gl=swiftshader", NULL, NULL},
+        {L"Foxmail.exe", L" --in-process-gpu", NULL, NULL},
+        {L"UplayWebCore.exe", L" --use-angle=vulkan", NULL, NULL},
+        {L"qwSubprocess.exe", L" --in-process-gpu --use-gl=swiftshader", NULL, NULL},
+        {L"Paradox Launcher.exe", L" --in-process-gpu --use-gl=swiftshader", NULL, NULL},
+        {L"Battle.net.exe", L" --in-process-gpu --use-gl=swiftshader", NULL, NULL},
+        {L"msedgewebview2.exe", L" --in-process-gpu --use-gl=swiftshader --no-sandbox", NULL, L"--type=crashpad-handler"},
+        {L"redprelauncher.exe", L" --launcher-skip", NULL, NULL},
+        {L"\\Tools\\Launcher.exe", L" --in-process-gpu", NULL, NULL},
+        {L"cefsubprocess.exe", L" --in-process-gpu --use-gl=swiftshader", NULL, L"--type=crashpad-handler"},
+        {L"t2gp.exe", L" --no-sandbox --in-process-gpu --use-gl=swiftshader", NULL, L"--type=crashpad-handler"},
+        {L"WXWorkWeb.exe", L" --in-process-gpu", NULL, L"--type=crashpad-handler"},
+        {L"Anno1800.exe", L" /devicetype DX12", NULL, NULL},
+        {L"HYP.exe", L" --in-process-gpu", NULL, NULL},
+    };
+    unsigned int i;
+
+    if (!cmd) return NULL;
+
+    for (i = 0; i < ARRAY_SIZE(options); ++i)
+    {
+        if (wcsstr( cmd, options[i].exe_name )
+            && (!options[i].required_args || wcsstr(cmd_line, options[i].required_args))
+            && (!options[i].forbidden_args || !wcsstr(cmd_line, options[i].forbidden_args)))
+        {
+            FIXME( "HACK: appending %s to command line.\n", debugstr_w(options[i].append) );
+            return options[i].append;
+        }
+    }
+    return NULL;
+}
+
 /**********************************************************************
  *           CreateProcessInternalW   (kernelbase.@)
  */
@@ -562,7 +726,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
     RTL_USER_PROCESS_PARAMETERS *params = NULL;
     RTL_USER_PROCESS_INFORMATION rtl_info;
     HANDLE parent = 0, debug = 0;
+    const WCHAR *append;
     ULONG nt_flags = 0;
+    USHORT machine = 0;
     NTSTATUS status;
 
     /* Process the AppName and/or CmdLine to get module name and path */
@@ -586,92 +752,15 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
         app_name = name;
     }
 
-    /* CROSSOVER HACK: bug 13322 (winehq bug 39403)
-     * Insert --no-sandbox in command line of Steam's web helper process to
-     * work around rendering problems.
-     * CROSSOVER HACK: bug 17315
-     * Insert --in-process-gpu in command line of Steam's web helper process to
-     * work around page rendering problems. */
-    /* CROSSOVER HACK: bug 18582
-     * Add --in-process-gpu to the Rockstar Social Club's
-     * web helper process command line.
-     */
-    /* CROSSOVER HACK: bug 19537
-     * Add --in-process-gpu to Foxmail's command line.
-     */
-    /* CROSSOVER HACK: bug 15388
-     * Add --in-process-gpu and --use-gl=swiftshader to EO.WebBrowser CEF processes,
-     * used by Quicken.
-     * (It launches processes through rundll32.exe and already passes --no-sandbox)
-     */
-    /* CROSSOVER HACK: bug 19252
-     * Add --use-angle=gl to Ubisoft Connect.
-     */
-    /* CROSSOVER HACK: bug 20889
-     * Add --in-process-gpu and --use-gl=swiftshader to qwSubprocess.exe, another
-     * CEF helper used by Quicken. It already passes --no-sandbox.
-     */
-    /* CROSSOVER HACK: bug 20645
-     * Add --in-process-gpu and --no-sandbox to the Paradox Launcher.
-     */
+    /* CROSSOVER HACK */
+    if ((append = hack_append_command_line( app_name, tidy_cmdline )))
     {
-        static const WCHAR steamwebhelperexeW[] = {'s','t','e','a','m','w','e','b','h','e','l','p','e','r','.','e','x','e',0};
-        static const WCHAR socialclubhelperexeW[] = {'S','o','c','i','a','l','C','l','u','b','H','e','l','p','e','r','.','e','x','e',0};
-        static const WCHAR foxmailW[] = {'F','o','x','m','a','i','l','.','e','x','e',0};
-        static const WCHAR rundll32W[] = {'r','u','n','d','l','l','3','2','.','e','x','e',0};
-        static const WCHAR BattlenetW[] = {'B','a','t','t','l','e','.','n','e','t','.','e','x','e',0};
-        static const WCHAR UplayW[] = {'U','p','l','a','y','W','e','b','C','o','r','e','.','e','x','e',0};
-        static const WCHAR qwSubprocessW[] = {'q','w','S','u','b','p','r','o','c','e','s','s','.','e','x','e',0};
-        static const WCHAR paradoxlauncherW[] = {'P','a','r','a','d','o','x',' ','L','a','u','n','c','h','e','r','.','e','x','e',0};
-        static const WCHAR wechatW[] = {'W','e','C','h','a','t','.','e','x','e',0};
-
-        static const WCHAR inprocessgpuW[] = {' ','-','-','i','n','-','p','r','o','c','e','s','s','-','g','p','u',0};
-        static const WCHAR nosandboxW[] = {' ','-','-','n','o','-','s','a','n','d','b','o','x',0};
-        static const WCHAR swiftshaderW[] = {' ','-','-','u','s','e','-','g','l','=','s','w','i','f','t','s','h','a','d','e','r',0};
-        static const WCHAR angleglW[] = {' ','-','-','u','s','e','-','a','n','g','l','e','=','g','l',0};
-        static const WCHAR disablegpuW[] = {' ','-','-','d','i','s','a','b','l','e','-','g','p','u',0};
-
-        if (wcsstr(app_name, steamwebhelperexeW) || wcsstr(app_name, socialclubhelperexeW) || wcsstr(app_name, foxmailW)
-                || wcsstr(app_name, BattlenetW) || (wcsstr(app_name, rundll32W) && wcsstr(tidy_cmdline, nosandboxW))
-                || wcsstr(app_name, UplayW)
-                || wcsstr(app_name, qwSubprocessW)
-                || wcsstr(app_name, wechatW)
-                || wcsstr(app_name, paradoxlauncherW)
-           )
-        {
-            LPWSTR new_command_line;
-
-            new_command_line = RtlAllocateHeap(GetProcessHeap(), 0,
-                    sizeof(WCHAR) * (lstrlenW(tidy_cmdline) + lstrlenW(nosandboxW) +  lstrlenW(inprocessgpuW)
-                        + lstrlenW(swiftshaderW) + lstrlenW(angleglW) + lstrlenW(disablegpuW) + 1));
-
-            if (!new_command_line) return FALSE;
-
-            wcscpy(new_command_line, tidy_cmdline);
-            lstrcatW(new_command_line, nosandboxW);
-            lstrcatW(new_command_line, inprocessgpuW);
-
-            if ((wcsstr(app_name, rundll32W) && wcsstr(tidy_cmdline, nosandboxW))
-                    || wcsstr(app_name, qwSubprocessW))
-            {
-                lstrcatW(new_command_line, swiftshaderW);
-            }
-
-            if (wcsstr(app_name, UplayW))
-            {
-                lstrcatW(new_command_line, angleglW);
-            }
-
-            if (wcsstr(app_name, steamwebhelperexeW))
-            {
-                lstrcatW(new_command_line, disablegpuW);
-            }
-
-            TRACE("CrossOver hack changing command line to %s\n", debugstr_w(new_command_line));
-
-            if (tidy_cmdline != cmd_line) RtlFreeHeap( GetProcessHeap(), 0, tidy_cmdline );
-            tidy_cmdline = new_command_line;
-        }
+        WCHAR *new_cmdline = RtlAllocateHeap( GetProcessHeap(), 0,
+                                              sizeof(WCHAR) * (lstrlenW(cmd_line) + lstrlenW(append) + 1) );
+        lstrcpyW(new_cmdline, tidy_cmdline);
+        lstrcatW(new_cmdline, append);
+        if (tidy_cmdline != cmd_line) RtlFreeHeap( GetProcessHeap(), 0, tidy_cmdline );
+        tidy_cmdline = new_cmdline;
     }
     /* end CROSSOVER HACK */
 
@@ -702,6 +791,27 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
         }
     }
     /* end CROSSOVER HACK */
+
+    /* CROSSOVER HACK: various; see hack_replace_command_line */
+    {
+        WCHAR *new_cmd;
+
+        if ((new_cmd = hack_replace_command_line(app_name)))
+        {
+            lstrcpyW(name, new_cmd);
+            app_name = name;
+            RtlFreeHeap( GetProcessHeap(), 0, new_cmd );
+        }
+
+        if ((new_cmd = hack_replace_command_line(tidy_cmdline)))
+        {
+            if (tidy_cmdline != cmd_line) RtlFreeHeap( GetProcessHeap(), 0, tidy_cmdline );
+            tidy_cmdline = new_cmd;
+        }
+    }
+    /* end CROSSOVER HACK */
+
+    TRACE( "app %s cmdline %s after all hacks\n", debugstr_w(app_name), debugstr_w(tidy_cmdline) );
 
     /* Warn if unsupported features are used */
 
@@ -772,6 +882,10 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
                         TRACE( "PROC_THREAD_ATTRIBUTE_JOB_LIST handle count %Iu.\n",
                                attrs->attrs[i].size / sizeof(HANDLE) );
                         break;
+                    case PROC_THREAD_ATTRIBUTE_MACHINE_TYPE:
+                        machine = *(USHORT *)attrs->attrs[i].value;
+                        TRACE( "PROC_THREAD_ATTRIBUTE_MACHINE %x.\n", machine );
+                        break;
                     default:
                         FIXME("Unsupported attribute %#Ix.\n", attrs->attrs[i].attr);
                         break;
@@ -786,7 +900,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessInternalW( HANDLE token, const WCHAR 
     if (flags & CREATE_SUSPENDED) nt_flags |= PROCESS_CREATE_FLAGS_SUSPENDED;
 
     status = create_nt_process( token, debug, process_attr, thread_attr,
-                                nt_flags, params, &rtl_info, parent, handle_list, job_list );
+                                nt_flags, params, &rtl_info, parent, machine, handle_list, job_list );
     switch (status)
     {
     case STATUS_SUCCESS:
@@ -858,6 +972,26 @@ BOOL WINAPI DECLSPEC_HOTPATCH CreateProcessW( const WCHAR *app_name, WCHAR *cmd_
 {
     return CreateProcessInternalW( NULL, app_name, cmd_line, process_attr, thread_attr,
                                    inherit, flags, env, cur_dir, startup_info, info, NULL );
+}
+
+
+/**********************************************************************
+ *           SetProcessInformation   (kernelbase.@)
+ */
+BOOL WINAPI SetProcessInformation( HANDLE process, PROCESS_INFORMATION_CLASS info_class, void *info, DWORD size )
+{
+    switch (info_class)
+    {
+        case ProcessMemoryPriority:
+            return set_ntstatus( NtSetInformationProcess( process, ProcessPagePriority, info, size ));
+        case ProcessPowerThrottling:
+            return set_ntstatus( NtSetInformationProcess( process, ProcessPowerThrottlingState, info, size ));
+        case ProcessLeapSecondInfo:
+            return set_ntstatus( NtSetInformationProcess( process, ProcessLeapSecondInformation, info, size ));
+        default:
+            FIXME("Unrecognized information class %d.\n", info_class);
+            return FALSE;
+    }
 }
 
 
@@ -943,15 +1077,15 @@ BOOL WINAPI DECLSPEC_HOTPATCH GetExitCodeProcess( HANDLE process, LPDWORD exit_c
  */
 BOOL WINAPI DECLSPEC_HOTPATCH GetHandleInformation( HANDLE handle, DWORD *flags )
 {
-    OBJECT_DATA_INFORMATION info;
+    OBJECT_HANDLE_FLAG_INFORMATION info;
 
-    if (!set_ntstatus( NtQueryObject( handle, ObjectDataInformation, &info, sizeof(info), NULL )))
+    if (!set_ntstatus( NtQueryObject( handle, ObjectHandleFlagInformation, &info, sizeof(info), NULL )))
         return FALSE;
 
     if (flags)
     {
         *flags = 0;
-        if (info.InheritHandle) *flags |= HANDLE_FLAG_INHERIT;
+        if (info.Inherit) *flags |= HANDLE_FLAG_INHERIT;
         if (info.ProtectFromClose) *flags |= HANDLE_FLAG_PROTECT_FROM_CLOSE;
     }
     return TRUE;
@@ -1156,8 +1290,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsProcessorFeaturePresent ( DWORD feature )
 BOOL WINAPI DECLSPEC_HOTPATCH IsWow64Process2( HANDLE process, USHORT *machine, USHORT *native_machine )
 {
     /* CX HACK 20810: in Wow64 with a 32-bit-only bottle, pretend we aren't in Wow64 */
-    UNICODE_STRING name_str, val_str;
-    RtlInitUnicodeString( &name_str, L"WINEWOW6432BPREFIXMODE" );
+    UNICODE_STRING val_str, name_str = RTL_CONSTANT_STRING( L"WINEWOW6432BPREFIXMODE" );
     val_str.MaximumLength = 0;
 
     if (RtlQueryEnvironmentVariable_U( NULL, &name_str, &val_str ) != STATUS_VARIABLE_NOT_FOUND)
@@ -1180,9 +1313,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsWow64Process( HANDLE process, PBOOL wow64 )
     NTSTATUS status;
 
     /* CX HACK 20810: in Wow64 with a 32-bit-only bottle, pretend we aren't in Wow64 */
-    UNICODE_STRING name_str, val_str;
-    RtlInitUnicodeString( &name_str, L"WINEWOW6432BPREFIXMODE" );
+    UNICODE_STRING val_str, name_str = RTL_CONSTANT_STRING( L"WINEWOW6432BPREFIXMODE" );
     val_str.MaximumLength = 0;
+
     if (RtlQueryEnvironmentVariable_U( NULL, &name_str, &val_str ) != STATUS_VARIABLE_NOT_FOUND)
     {
         status = STATUS_SUCCESS;
@@ -1194,6 +1327,57 @@ BOOL WINAPI DECLSPEC_HOTPATCH IsWow64Process( HANDLE process, PBOOL wow64 )
         if (!status) *wow64 = !!pbi;
     }
     return set_ntstatus( status );
+}
+
+/*********************************************************************
+ *           GetProcessInformation   (kernelbase.@)
+ */
+BOOL WINAPI GetProcessInformation( HANDLE process, PROCESS_INFORMATION_CLASS info_class, void *data, DWORD size )
+{
+    switch (info_class)
+    {
+        case ProcessMachineTypeInfo:
+        {
+            PROCESS_MACHINE_INFORMATION *mi = data;
+            SYSTEM_SUPPORTED_PROCESSOR_ARCHITECTURES_INFORMATION machines[8];
+            NTSTATUS status;
+            ULONG i;
+
+            if (size != sizeof(*mi))
+            {
+                SetLastError(ERROR_BAD_LENGTH);
+                return FALSE;
+            }
+
+            status = NtQuerySystemInformationEx( SystemSupportedProcessorArchitectures, &process, sizeof(process),
+                    machines, sizeof(machines), NULL );
+            if (status) return set_ntstatus( status );
+
+            for (i = 0; machines[i].Machine; i++)
+            {
+                if (machines[i].Process)
+                {
+                    mi->ProcessMachine = machines[i].Machine;
+                    mi->Res0 = 0;
+                    mi->MachineAttributes = 0;
+                    if (machines[i].KernelMode)
+                        mi->MachineAttributes |= KernelEnabled;
+                    if (machines[i].UserMode)
+                        mi->MachineAttributes |= UserEnabled;
+                    if (machines[i].WoW64Container)
+                        mi->MachineAttributes |= Wow64Container;
+
+                    return TRUE;
+                }
+            }
+
+            break;
+        }
+        default:
+            FIXME("Unsupported information class %d.\n", info_class);
+    }
+
+    return FALSE;
 }
 
 
@@ -1248,10 +1432,13 @@ BOOL WINAPI DECLSPEC_HOTPATCH ProcessIdToSessionId( DWORD pid, DWORD *id )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH QueryProcessCycleTime( HANDLE process, ULONG64 *cycle )
 {
-    static int once;
-    if (!once++) FIXME( "(%p,%p): stub!\n", process, cycle );
-    SetLastError( ERROR_CALL_NOT_IMPLEMENTED );
-    return FALSE;
+    PROCESS_CYCLE_TIME_INFORMATION time;
+
+    if (!set_ntstatus( NtQueryInformationProcess( process, ProcessCycleTime, &time, sizeof(time), NULL ) ))
+        return FALSE;
+
+    *cycle = time.AccumulatedCycles;
+    return TRUE;
 }
 
 
@@ -1282,21 +1469,21 @@ UINT WINAPI DECLSPEC_HOTPATCH SetHandleCount( UINT count )
  */
 BOOL WINAPI DECLSPEC_HOTPATCH SetHandleInformation( HANDLE handle, DWORD mask, DWORD flags )
 {
-    OBJECT_DATA_INFORMATION info;
+    OBJECT_HANDLE_FLAG_INFORMATION info;
 
     /* if not setting both fields, retrieve current value first */
     if ((mask & (HANDLE_FLAG_INHERIT | HANDLE_FLAG_PROTECT_FROM_CLOSE)) !=
         (HANDLE_FLAG_INHERIT | HANDLE_FLAG_PROTECT_FROM_CLOSE))
     {
-        if (!set_ntstatus( NtQueryObject( handle, ObjectDataInformation, &info, sizeof(info), NULL )))
+        if (!set_ntstatus( NtQueryObject( handle, ObjectHandleFlagInformation, &info, sizeof(info), NULL )))
             return FALSE;
     }
     if (mask & HANDLE_FLAG_INHERIT)
-        info.InheritHandle = (flags & HANDLE_FLAG_INHERIT) != 0;
+        info.Inherit = (flags & HANDLE_FLAG_INHERIT) != 0;
     if (mask & HANDLE_FLAG_PROTECT_FROM_CLOSE)
         info.ProtectFromClose = (flags & HANDLE_FLAG_PROTECT_FROM_CLOSE) != 0;
 
-    return set_ntstatus( NtSetInformationObject( handle, ObjectDataInformation, &info, sizeof(info) ));
+    return set_ntstatus( NtSetInformationObject( handle, ObjectHandleFlagInformation, &info, sizeof(info) ));
 }
 
 
@@ -1409,7 +1596,6 @@ BOOL WINAPI DECLSPEC_HOTPATCH TerminateProcess( HANDLE handle, DWORD exit_code )
  ***********************************************************************/
 
 
-static STARTUPINFOW startup_infoW;
 static char *command_lineA;
 static WCHAR *command_lineW;
 
@@ -1419,25 +1605,6 @@ static WCHAR *command_lineW;
 void init_startup_info( RTL_USER_PROCESS_PARAMETERS *params )
 {
     ANSI_STRING ansi;
-
-    startup_infoW.cb              = sizeof(startup_infoW);
-    startup_infoW.lpReserved      = NULL;
-    startup_infoW.lpDesktop       = params->Desktop.Buffer;
-    startup_infoW.lpTitle         = params->WindowTitle.Buffer;
-    startup_infoW.dwX             = params->dwX;
-    startup_infoW.dwY             = params->dwY;
-    startup_infoW.dwXSize         = params->dwXSize;
-    startup_infoW.dwYSize         = params->dwYSize;
-    startup_infoW.dwXCountChars   = params->dwXCountChars;
-    startup_infoW.dwYCountChars   = params->dwYCountChars;
-    startup_infoW.dwFillAttribute = params->dwFillAttribute;
-    startup_infoW.dwFlags         = params->dwFlags;
-    startup_infoW.wShowWindow     = params->wShowWindow;
-    startup_infoW.cbReserved2     = params->RuntimeInfo.MaximumLength;
-    startup_infoW.lpReserved2     = params->RuntimeInfo.MaximumLength ? (void *)params->RuntimeInfo.Buffer : NULL;
-    startup_infoW.hStdInput       = params->hStdInput ? params->hStdInput : INVALID_HANDLE_VALUE;
-    startup_infoW.hStdOutput      = params->hStdOutput ? params->hStdOutput : INVALID_HANDLE_VALUE;
-    startup_infoW.hStdError       = params->hStdError ? params->hStdError : INVALID_HANDLE_VALUE;
 
     command_lineW = params->CommandLine.Buffer;
     if (!RtlUnicodeStringToAnsiString( &ansi, &params->CommandLine, TRUE )) command_lineA = ansi.Buffer;
@@ -1478,7 +1645,34 @@ LPWSTR WINAPI GetCommandLineW(void)
  */
 void WINAPI DECLSPEC_HOTPATCH GetStartupInfoW( STARTUPINFOW *info )
 {
-    *info = startup_infoW;
+    RTL_USER_PROCESS_PARAMETERS *params;
+
+    RtlAcquirePebLock();
+
+    params = RtlGetCurrentPeb()->ProcessParameters;
+
+    info->cb              = sizeof(*info);
+    info->lpReserved      = NULL;
+    info->lpDesktop       = params->Desktop.Buffer;
+    info->lpTitle         = params->WindowTitle.Buffer;
+    info->dwX             = params->dwX;
+    info->dwY             = params->dwY;
+    info->dwXSize         = params->dwXSize;
+    info->dwYSize         = params->dwYSize;
+    info->dwXCountChars   = params->dwXCountChars;
+    info->dwYCountChars   = params->dwYCountChars;
+    info->dwFillAttribute = params->dwFillAttribute;
+    info->dwFlags         = params->dwFlags;
+    info->wShowWindow     = params->wShowWindow;
+    info->cbReserved2     = params->RuntimeInfo.MaximumLength;
+    info->lpReserved2     = params->RuntimeInfo.MaximumLength ? (void *)params->RuntimeInfo.Buffer : NULL;
+    if (params->dwFlags & STARTF_USESTDHANDLES)
+    {
+        info->hStdInput   = params->hStdInput;
+        info->hStdOutput  = params->hStdOutput;
+        info->hStdError   = params->hStdError;
+    }
+    RtlReleasePebLock();
 }
 
 
@@ -1867,6 +2061,43 @@ BOOL WINAPI DECLSPEC_HOTPATCH InitializeProcThreadAttributeList( struct _PROC_TH
 }
 
 
+static inline DWORD validate_proc_thread_attribute( DWORD_PTR attr, SIZE_T size )
+{
+    switch (attr)
+    {
+    case PROC_THREAD_ATTRIBUTE_PARENT_PROCESS:
+        if (size != sizeof(HANDLE)) return ERROR_BAD_LENGTH;
+        break;
+    case PROC_THREAD_ATTRIBUTE_HANDLE_LIST:
+        if ((size / sizeof(HANDLE)) * sizeof(HANDLE) != size) return ERROR_BAD_LENGTH;
+        break;
+    case PROC_THREAD_ATTRIBUTE_IDEAL_PROCESSOR:
+        if (size != sizeof(PROCESSOR_NUMBER)) return ERROR_BAD_LENGTH;
+        break;
+    case PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY:
+       if (size != sizeof(DWORD) && size != sizeof(DWORD64)) return ERROR_BAD_LENGTH;
+       break;
+    case PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY:
+        if (size != sizeof(DWORD) && size != sizeof(DWORD64) && size != sizeof(DWORD64) * 2)
+            return ERROR_BAD_LENGTH;
+        break;
+    case PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE:
+       if (size != sizeof(HPCON)) return ERROR_BAD_LENGTH;
+       break;
+    case PROC_THREAD_ATTRIBUTE_JOB_LIST:
+        if ((size / sizeof(HANDLE)) * sizeof(HANDLE) != size) return ERROR_BAD_LENGTH;
+        break;
+    case PROC_THREAD_ATTRIBUTE_MACHINE_TYPE:
+        if (size != sizeof(USHORT)) return ERROR_BAD_LENGTH;
+        break;
+    default:
+        FIXME( "Unhandled attribute %Iu\n", attr & PROC_THREAD_ATTRIBUTE_NUMBER );
+        return ERROR_NOT_SUPPORTED;
+    }
+    return 0;
+}
+
+
 /***********************************************************************
  *           UpdateProcThreadAttribute   (kernelbase.@)
  */
@@ -1874,7 +2105,7 @@ BOOL WINAPI DECLSPEC_HOTPATCH UpdateProcThreadAttribute( struct _PROC_THREAD_ATT
                                                          DWORD flags, DWORD_PTR attr, void *value,
                                                          SIZE_T size, void *prev_ret, SIZE_T *size_ret )
 {
-    DWORD mask;
+    DWORD mask, err;
     struct proc_thread_attr *entry;
 
     TRACE( "(%p %lx %08Ix %p %Id %p %p)\n", list, flags, attr, value, size, prev_ret, size_ret );
@@ -1884,68 +2115,9 @@ BOOL WINAPI DECLSPEC_HOTPATCH UpdateProcThreadAttribute( struct _PROC_THREAD_ATT
         SetLastError( ERROR_GEN_FAILURE );
         return FALSE;
     }
-
-    switch (attr)
+    if ((err = validate_proc_thread_attribute( attr, size )))
     {
-    case PROC_THREAD_ATTRIBUTE_PARENT_PROCESS:
-        if (size != sizeof(HANDLE))
-        {
-            SetLastError( ERROR_BAD_LENGTH );
-            return FALSE;
-        }
-        break;
-
-    case PROC_THREAD_ATTRIBUTE_HANDLE_LIST:
-        if ((size / sizeof(HANDLE)) * sizeof(HANDLE) != size)
-        {
-            SetLastError( ERROR_BAD_LENGTH );
-            return FALSE;
-        }
-        break;
-
-    case PROC_THREAD_ATTRIBUTE_IDEAL_PROCESSOR:
-        if (size != sizeof(PROCESSOR_NUMBER))
-        {
-            SetLastError( ERROR_BAD_LENGTH );
-            return FALSE;
-        }
-        break;
-
-    case PROC_THREAD_ATTRIBUTE_CHILD_PROCESS_POLICY:
-       if (size != sizeof(DWORD) && size != sizeof(DWORD64))
-       {
-           SetLastError( ERROR_BAD_LENGTH );
-           return FALSE;
-       }
-       break;
-
-    case PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY:
-        if (size != sizeof(DWORD) && size != sizeof(DWORD64) && size != sizeof(DWORD64) * 2)
-        {
-            SetLastError( ERROR_BAD_LENGTH );
-            return FALSE;
-        }
-        break;
-
-    case PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE:
-       if (size != sizeof(HPCON))
-       {
-           SetLastError( ERROR_BAD_LENGTH );
-           return FALSE;
-       }
-       break;
-
-    case PROC_THREAD_ATTRIBUTE_JOB_LIST:
-        if ((size / sizeof(HANDLE)) * sizeof(HANDLE) != size)
-        {
-            SetLastError( ERROR_BAD_LENGTH );
-            return FALSE;
-        }
-        break;
-
-    default:
-        SetLastError( ERROR_NOT_SUPPORTED );
-        FIXME( "Unhandled attribute %Iu\n", attr & PROC_THREAD_ATTRIBUTE_NUMBER );
+        SetLastError( err );
         return FALSE;
     }
 

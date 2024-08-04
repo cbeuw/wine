@@ -62,7 +62,11 @@ HRESULT create_view( enum view_type type, enum wbm_namespace ns, const WCHAR *pa
             free( view );
             return hr;
         }
-        else if (!table && ns == WBEMPROX_NAMESPACE_LAST) return WBEM_E_INVALID_CLASS;
+        else if (!table && ns == WBEMPROX_NAMESPACE_LAST)
+        {
+            free( view );
+            return WBEM_E_INVALID_CLASS;
+        }
         view->proplist = proplist;
         view->cond     = cond;
         break;
@@ -118,22 +122,22 @@ static HRESULT eval_strcmp( UINT op, const WCHAR *lstr, const WCHAR *rstr, LONGL
     switch (op)
     {
     case OP_EQ:
-        *val = !wcscmp( lstr, rstr );
+        *val = !wcsicmp( lstr, rstr );
         break;
     case OP_GT:
-        *val = wcscmp( lstr, rstr ) > 0;
+        *val = wcsicmp( lstr, rstr ) > 0;
         break;
     case OP_LT:
-        *val = wcscmp( lstr, rstr ) < 0;
+        *val = wcsicmp( lstr, rstr ) < 0;
         break;
     case OP_LE:
-        *val = wcscmp( lstr, rstr ) <= 0;
+        *val = wcsicmp( lstr, rstr ) <= 0;
         break;
     case OP_GE:
-        *val = wcscmp( lstr, rstr ) >= 0;
+        *val = wcsicmp( lstr, rstr ) >= 0;
         break;
     case OP_NE:
-        *val = wcscmp( lstr, rstr );
+        *val = wcsicmp( lstr, rstr );
         break;
     case OP_LIKE:
         *val = eval_like( lstr, rstr );

@@ -19,13 +19,11 @@
 #ifndef _PERFLIB_H_
 #define _PERFLIB_H_
 
-#include "wine/winheader_enter.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef LPVOID (CDECL * PERF_MEM_ALLOC)(SIZE_T,LPVOID);
+typedef void * (__WINE_ALLOC_SIZE(1) CDECL * PERF_MEM_ALLOC)(SIZE_T,void*);
 typedef void (CDECL * PERF_MEM_FREE)(LPVOID,LPVOID);
 typedef ULONG (WINAPI * PERFLIBREQUEST)(ULONG,PVOID,ULONG);
 
@@ -121,7 +119,5 @@ ULONG WINAPI PerfQueryCounterData(HANDLE, PERF_DATA_HEADER *, DWORD, DWORD *);
 #ifdef __cplusplus
 }       /* extern "C" */
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* _PERFLIB_H_ */

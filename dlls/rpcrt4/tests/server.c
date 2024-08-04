@@ -30,6 +30,7 @@
 #define SKIP_TYPE_DECLS
 #include "server_interp.h"
 #include "server_defines.h"
+#include "explicit_handle.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -40,10 +41,11 @@
 
 #define INT_CODE 4198
 
-static const char *progname;
+static const char *progname, *client_test_name;
 static BOOL old_windows_version;
 
 static HANDLE stop_event, stop_wait_event;
+static PROCESS_INFORMATION client_info;
 
 static void (WINAPI *pNDRSContextMarshall2)(RPC_BINDING_HANDLE, NDR_SCONTEXT, void*, NDR_RUNDOWN, void*, ULONG);
 static NDR_SCONTEXT (WINAPI *pNDRSContextUnmarshall2)(RPC_BINDING_HANDLE, void*, ULONG, void*, ULONG);
@@ -147,6 +149,7 @@ static int (__cdecl *sum_array_ptr)(int (*a)[2]);
 static ctx_handle_t (__cdecl *get_handle)(void);
 static void (__cdecl *get_handle_by_ptr)(ctx_handle_t *r);
 static void (__cdecl *test_handle)(ctx_handle_t ctx_handle);
+static void (__cdecl *test_I_RpcBindingInqLocalClientPID)(unsigned int protseq, RPC_BINDING_HANDLE binding);
 
 #define SERVER_FUNCTIONS \
     X(int_return) \
@@ -240,7 +243,8 @@ static void (__cdecl *test_handle)(ctx_handle_t ctx_handle);
     X(sum_array_ptr) \
     X(get_handle) \
     X(get_handle_by_ptr) \
-    X(test_handle)
+    X(test_handle) \
+    X(test_I_RpcBindingInqLocalClientPID)
 
 /* type check statements generated in header file */
 fnprintf *p_printf = printf;
@@ -864,7 +868,9 @@ s123_t * __cdecl s_get_s123(void)
 
 str_t __cdecl s_get_filename(void)
 {
-    return (char *)__FILE__;
+    void *ptr = MIDL_user_allocate(strlen(__FILE__) + 1);
+    strcpy(ptr, __FILE__);
+    return (char *)ptr;
 }
 
 int __cdecl s_echo_ranged_int(int i, int j, int k)
@@ -1122,6 +1128,105 @@ void __cdecl s_test_handle(ctx_handle_t ctx_handle)
     ok(ctx_handle == (ctx_handle_t)0xdeadbeef, "Unexpected ctx_handle %p\n", ctx_handle);
 }
 
+struct test_thread_params
+{
+    unsigned int protseq;
+    RPC_BINDING_HANDLE binding;
+};
+
+static DWORD CALLBACK test_I_RpcBindingInqLocalClientPID_thread_func(void *args)
+{
+    struct test_thread_params *params = (struct test_thread_params *)args;
+    RPC_STATUS status;
+    ULONG pid;
+
+    winetest_push_context("%s", client_test_name);
+
+    status = I_RpcBindingInqLocalClientPID(NULL, &pid);
+    ok(status == RPC_S_NO_CALL_ACTIVE, "Got unexpected %ld.\n", status);
+
+    /* Other protocol sequences throw exceptions */
+    if (params->protseq == RPC_PROTSEQ_LRPC)
+    {
+        status = I_RpcBindingInqLocalClientPID(params->binding, &pid);
+        ok(status == RPC_S_OK, "Got unexpected %ld.\n", status);
+        ok(pid == client_info.dwProcessId, "Got unexpected pid.\n");
+    }
+
+    winetest_pop_context();
+    return 0;
+}
+
+void __cdecl s_test_I_RpcBindingInqLocalClientPID(unsigned int protseq, RPC_BINDING_HANDLE binding)
+{
+    struct test_thread_params params;
+    RPC_STATUS status;
+    HANDLE thread;
+    ULONG pid;
+
+    winetest_push_context("%s", client_test_name);
+
+    /* Crash on Windows */
+    if (0)
+    {
+    status = I_RpcBindingInqLocalClientPID(NULL, NULL);
+    ok(status == RPC_S_INVALID_ARG, "Got unexpected %ld.\n", status);
+
+    status = I_RpcBindingInqLocalClientPID(binding, NULL);
+    ok(status == RPC_S_INVALID_ARG, "Got unexpected %ld.\n", status);
+    }
+
+    status = I_RpcBindingInqLocalClientPID(NULL, &pid);
+    if (protseq == RPC_PROTSEQ_LRPC)
+    {
+        ok(status == RPC_S_OK, "Got unexpected %ld.\n", status);
+        ok(pid == client_info.dwProcessId, "Got unexpected pid.\n");
+    }
+    else
+    {
+        ok(status == RPC_S_INVALID_BINDING, "Got unexpected %ld.\n", status);
+    }
+
+    if (protseq == RPC_PROTSEQ_LRPC) /* Other protocol sequences throw exceptions */
+    {
+        status = I_RpcBindingInqLocalClientPID(binding, &pid);
+        ok(status == RPC_S_OK, "Got unexpected %ld.\n", status);
+        ok(pid == client_info.dwProcessId, "Got unexpected pid.\n");
+    }
+
+    params.protseq = protseq;
+    params.binding = binding;
+    thread = CreateThread(NULL, 0, test_I_RpcBindingInqLocalClientPID_thread_func, &params, 0, NULL);
+    WaitForSingleObject(thread, INFINITE);
+    CloseHandle(thread);
+
+    winetest_pop_context();
+}
+
+int __cdecl s_add(handle_t binding, int a, int b)
+{
+  ok(binding != NULL, "explicit handle is NULL\n");
+  return a + b;
+}
+
+int __cdecl s_getNum(int a, handle_t binding)
+{
+  ok(binding != NULL, "explicit handle is NULL\n");
+  return a + 2;
+}
+
+void __cdecl s_Shutdown(handle_t binding)
+{
+    RPC_STATUS status;
+    ULONG pid = 0;
+    ok(binding != NULL, "explicit handle is NULL\n");
+
+    status = I_RpcBindingInqLocalClientPID(binding, &pid);
+    ok(status == RPC_S_OK, "Got unexpected %ld.\n", status);
+    ok(pid == client_info.dwProcessId, "Got unexpected pid: %ld client pid: %ld.\n", pid, client_info.dwProcessId);
+    ok(SetEvent(stop_event), "SetEvent\n");
+}
+
 void __RPC_USER ctx_handle_t_rundown(ctx_handle_t ctx_handle)
 {
     ok(ctx_handle == (ctx_handle_t)0xdeadbeef, "Unexpected ctx_handle %p\n", ctx_handle);
@@ -1137,17 +1242,17 @@ static void
 run_client(const char *test)
 {
   char cmdline[MAX_PATH];
-  PROCESS_INFORMATION info;
   STARTUPINFOA startup;
 
   memset(&startup, 0, sizeof startup);
   startup.cb = sizeof startup;
 
+  client_test_name = test;
   make_cmdline(cmdline, test);
-  ok(CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &info), "CreateProcess\n");
-  wait_child_process( info.hProcess );
-  ok(CloseHandle(info.hProcess), "CloseHandle\n");
-  ok(CloseHandle(info.hThread), "CloseHandle\n");
+  ok(CreateProcessA(NULL, cmdline, NULL, NULL, FALSE, 0L, NULL, NULL, &startup, &client_info), "CreateProcess\n");
+  wait_child_process(client_info.hProcess);
+  ok(CloseHandle(client_info.hProcess), "CloseHandle\n");
+  ok(CloseHandle(client_info.hThread), "CloseHandle\n");
 }
 
 static void
@@ -1954,6 +2059,7 @@ client(const char *test)
   static unsigned char port[] = PORT;
   static unsigned char pipe[] = PIPE;
   static unsigned char guid[] = "00000000-4114-0704-2301-000000000000";
+  static unsigned char explicit_handle_guid[] = "00000000-4114-0704-2301-000000000002";
 
   unsigned char *binding;
 
@@ -1964,6 +2070,7 @@ client(const char *test)
 
     run_tests();
     authinfo_test(RPC_PROTSEQ_TCP, 0);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_TCP, IMixedServer_IfHandle);
     test_is_server_listening2(IMixedServer_IfHandle, RPC_S_OK, RPC_S_ACCESS_DENIED);
 
     ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
@@ -1976,6 +2083,7 @@ client(const char *test)
 
     set_auth_info(IMixedServer_IfHandle);
     authinfo_test(RPC_PROTSEQ_TCP, 1);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_TCP, IMixedServer_IfHandle);
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_ACCESS_DENIED);
 
     ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
@@ -1988,6 +2096,7 @@ client(const char *test)
 
     run_tests(); /* can cause RPC_X_BAD_STUB_DATA exception */
     authinfo_test(RPC_PROTSEQ_LRPC, 0);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_LRPC, IMixedServer_IfHandle);
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_OK);
 
     ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
@@ -2000,6 +2109,7 @@ client(const char *test)
 
     run_tests();
     authinfo_test(RPC_PROTSEQ_LRPC, 0);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_LRPC, IMixedServer_IfHandle);
     todo_wine
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_NOT_LISTENING);
 
@@ -2016,6 +2126,7 @@ client(const char *test)
 
     set_auth_info(IMixedServer_IfHandle);
     authinfo_test(RPC_PROTSEQ_LRPC, 1);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_LRPC, IMixedServer_IfHandle);
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_OK);
 
     ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
@@ -2029,6 +2140,7 @@ client(const char *test)
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_OK);
     run_tests();
     authinfo_test(RPC_PROTSEQ_NMP, 0);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_NMP, IMixedServer_IfHandle);
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_OK);
     stop();
     test_is_server_listening(IMixedServer_IfHandle, RPC_S_NOT_LISTENING);
@@ -2046,10 +2158,26 @@ client(const char *test)
     test_is_server_listening(IInterpServer_IfHandle, RPC_S_OK);
     run_tests();
     authinfo_test(RPC_PROTSEQ_NMP, 0);
+    test_I_RpcBindingInqLocalClientPID(RPC_PROTSEQ_NMP, IInterpServer_IfHandle);
     test_is_server_listening(IInterpServer_IfHandle, RPC_S_OK);
 
     ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
     ok(RPC_S_OK == RpcBindingFree(&IInterpServer_IfHandle), "RpcBindingFree\n");
+  }
+  else if (strcmp(test, "explicit_handle") == 0)
+  {
+    IMixedServer_IfHandle = NULL;
+    ok(RPC_S_OK == RpcStringBindingComposeA(NULL, ncalrpc, NULL, explicit_handle_guid, NULL, &binding), "RpcStringBindingCompose\n");
+    ok(RPC_S_OK == RpcBindingFromStringBindingA(binding, &IMixedServer_IfHandle), "RpcBindingFromStringBinding\n");
+
+    test_is_server_listening(IMixedServer_IfHandle, RPC_S_OK);
+
+    ok(add(IMixedServer_IfHandle, 2, 3) == 5, "RPC add\n");
+    ok(getNum(7, IMixedServer_IfHandle) == 9, "RPC getNum\n");
+    Shutdown(IMixedServer_IfHandle);
+
+    ok(RPC_S_OK == RpcStringFreeA(&binding), "RpcStringFree\n");
+    ok(RPC_S_OK == RpcBindingFree(&IMixedServer_IfHandle), "RpcBindingFree\n");
   }
 }
 
@@ -2062,6 +2190,7 @@ server(void)
   static unsigned char pipe[] = PIPE;
   static unsigned char ncalrpc[] = "ncalrpc";
   static unsigned char guid[] = "00000000-4114-0704-2301-000000000000";
+  static unsigned char explicit_handle_guid[] = "00000000-4114-0704-2301-000000000002";
   RPC_STATUS status, iptcp_status, np_status, ncalrpc_status;
   DWORD ret;
 
@@ -2159,6 +2288,51 @@ server(void)
     status = RpcServerUnregisterIf(s_IMixedServer_v0_0_s_ifspec, NULL, TRUE);
     ok(status == RPC_S_OK, "RpcServerUnregisterIf() failed: %lu\n", status);
   }
+
+  /* explicit handle */
+  stop_event = CreateEventW(NULL, FALSE, FALSE, NULL);
+  ok(stop_event != NULL, "CreateEvent failed with error %ld\n", GetLastError());
+
+  ncalrpc_status = RpcServerUseProtseqEpA(ncalrpc, 0, explicit_handle_guid, NULL);
+  if (ncalrpc_status == RPC_S_PROTSEQ_NOT_SUPPORTED)
+    skip("Protocol sequence ncacn_np is not supported\n");
+  else
+    ok(ncalrpc_status == RPC_S_OK, "RpcServerUseProtseqEp(ncacn_np) failed with status %ld\n", ncalrpc_status);
+
+  if (pRpcServerRegisterIfEx)
+  {
+    trace("Using RpcServerRegisterIfEx\n");
+    status = pRpcServerRegisterIfEx(s_RPCExplicitHandle_v0_0_s_ifspec, NULL, NULL,
+                                    RPC_IF_ALLOW_CALLBACKS_WITH_NO_AUTH,
+                                    RPC_C_LISTEN_MAX_CALLS_DEFAULT, NULL);
+    ok(status == RPC_S_OK, "RpcServerRegisterIfEx failed with status %ld\n", status);
+    test_is_server_listening(NULL, RPC_S_NOT_LISTENING);
+    status = RpcServerListen(1, RPC_C_LISTEN_MAX_CALLS_DEFAULT, TRUE);
+    ok(status == RPC_S_OK, "RpcServerListen failed with status %ld\n", status);
+  }
+  else
+  {
+    status = RpcServerRegisterIf(s_RPCExplicitHandle_v0_0_s_ifspec, NULL, NULL);
+    ok(status == RPC_S_OK, "RpcServerRegisterIf failed with status %ld\n", status);
+    status = RpcServerListen(1, RPC_C_LISTEN_MAX_CALLS_DEFAULT, TRUE);
+    ok(status == RPC_S_OK, "RpcServerListen failed with status %ld\n", status);
+  }
+
+  test_is_server_listening(NULL, RPC_S_OK);
+
+  run_client("explicit_handle");
+
+  ret = WaitForSingleObject(stop_event, 1000);
+  ok(WAIT_OBJECT_0 == ret, "WaitForSingleObject\n");
+
+  if (pRpcServerRegisterIfEx)
+  {
+    status = RpcServerUnregisterIf(s_RPCExplicitHandle_v0_0_s_ifspec, NULL, TRUE);
+    ok(status == RPC_S_OK, "RpcServerUnregisterIf() failed: %lu\n", status);
+  }
+
+  CloseHandle(stop_event);
+  stop_event = NULL;
 
   CoUninitialize();
 }

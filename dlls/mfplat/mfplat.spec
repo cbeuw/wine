@@ -20,7 +20,7 @@
 @ stdcall MFAllocateWorkQueue(ptr)
 @ stdcall MFAllocateWorkQueueEx(long ptr) rtworkq.RtwqAllocateWorkQueue
 @ stub MFAppendCollection
-@ stub MFAverageTimePerFrameToFrameRate
+@ stdcall MFAverageTimePerFrameToFrameRate(int64 ptr ptr)
 @ stdcall MFBeginCreateFile(long long long wstr ptr ptr ptr)
 @ stub MFBeginGetHostByName
 @ stdcall MFBeginRegisterWorkQueueWithMMCSS(long wstr long ptr ptr)
@@ -39,7 +39,7 @@
 @ stub MFConvertToFP16Array
 @ stdcall MFCopyImage(ptr long ptr long long long)
 @ stdcall MFCreate2DMediaBuffer(long long long long ptr)
-@ stub MFCreateAMMediaTypeFromMFMediaType
+@ stdcall MFCreateAMMediaTypeFromMFMediaType(ptr int128 ptr)
 @ stdcall MFCreateAlignedMemoryBuffer(long long ptr)
 @ stdcall MFCreateAsyncResult(ptr ptr ptr ptr) rtworkq.RtwqCreateAsyncResult
 @ stdcall MFCreateAttributes(ptr long)
@@ -62,7 +62,7 @@
 @ stub MFCreateMediaTypeFromRepresentation
 @ stdcall MFCreateMemoryBuffer(long ptr)
 @ stub MFCreateMemoryStream
-@ stub MFCreatePathFromURL
+@ stdcall MFCreatePathFromURL(wstr ptr)
 @ stdcall MFCreatePresentationDescriptor(long ptr ptr)
 @ stdcall MFCreateSample(ptr)
 @ stub MFCreateSocket
@@ -71,7 +71,7 @@
 @ stdcall MFCreateStreamDescriptor(long long ptr ptr)
 @ stdcall MFCreateSystemTimeSource(ptr)
 @ stub MFCreateSystemUnderlyingClock
-@ stub MFCreateTempFile
+@ stdcall MFCreateTempFile(long long long ptr)
 @ stdcall MFCreateTrackedSample(ptr)
 @ stdcall MFCreateTransformActivate(ptr)
 @ stub MFCreateURLFromPath
@@ -81,7 +81,7 @@
 @ stub MFCreateVideoMediaTypeFromBitMapInfoHeaderEx
 @ stdcall MFCreateVideoMediaTypeFromSubtype(ptr ptr)
 @ stub MFCreateVideoMediaTypeFromVideoInfoHeader2
-@ stub MFCreateVideoMediaTypeFromVideoInfoHeader
+@ stdcall MFCreateVideoMediaTypeFromVideoInfoHeader(ptr long long long long int64 ptr ptr)
 @ stdcall MFCreateVideoSampleAllocatorEx(ptr ptr)
 @ stdcall MFCreateWaveFormatExFromMFMediaType(ptr ptr ptr long)
 @ stub MFDeserializeAttributesFromStream
@@ -117,14 +117,14 @@
 @ stdcall MFGetWorkQueueMMCSSPriority(long ptr) rtworkq.RtwqGetWorkQueueMMCSSPriority
 @ stdcall MFHeapAlloc(long long str long long)
 @ stdcall MFHeapFree(ptr)
-@ stub MFInitAMMediaTypeFromMFMediaType
+@ stdcall MFInitAMMediaTypeFromMFMediaType(ptr int128 ptr)
 @ stdcall MFInitAttributesFromBlob(ptr ptr long)
-@ stub MFInitMediaTypeFromAMMediaType
+@ stdcall MFInitMediaTypeFromAMMediaType(ptr ptr)
 @ stub MFInitMediaTypeFromMFVideoFormat
 @ stub MFInitMediaTypeFromMPEG1VideoInfo
 @ stub MFInitMediaTypeFromMPEG2VideoInfo
 @ stub MFInitMediaTypeFromVideoInfoHeader2
-@ stub MFInitMediaTypeFromVideoInfoHeader
+@ stdcall MFInitMediaTypeFromVideoInfoHeader(ptr ptr long ptr)
 @ stdcall MFInitMediaTypeFromWaveFormatEx(ptr ptr long)
 @ stub MFInitVideoFormat
 @ stdcall MFInitVideoFormat_RGB(ptr long long long)
@@ -162,7 +162,7 @@
 @ stdcall MFTEnumEx(int128 long ptr ptr ptr ptr)
 @ stdcall MFTGetInfo(int128 ptr ptr ptr ptr ptr ptr)
 @ stdcall MFTRegister(int128 int128 wstr long long ptr long ptr ptr)
-@ stdcall MFTRegisterLocal(ptr ptr wstr long long  ptr long ptr)
+@ stdcall MFTRegisterLocal(ptr ptr wstr long long ptr long ptr)
 @ stdcall MFTRegisterLocalByCLSID(ptr ptr wstr long long ptr long ptr)
 @ stdcall MFTUnregister(int128)
 @ stdcall MFTUnregisterLocal(ptr)

@@ -17,6 +17,7 @@
  */
 
 #include "wined3d_private.h"
+#include "wined3d_vk.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
@@ -40,6 +41,7 @@ static const struct wined3d_state_entry_template misc_state_template_vk[] =
     {STATE_VDECL,                                         {STATE_VDECL,                                         state_nop}},
     {STATE_DEPTH_STENCIL,                                 {STATE_DEPTH_STENCIL,                                 state_nop}},
     {STATE_STENCIL_REF,                                   {STATE_STENCIL_REF,                                   state_nop}},
+    {STATE_DEPTH_BOUNDS,                                  {STATE_DEPTH_BOUNDS,                                  state_nop}},
     {STATE_RASTERIZER,                                    {STATE_RASTERIZER,                                    state_nop}},
     {STATE_SCISSORRECT,                                   {STATE_SCISSORRECT,                                   state_nop}},
     {STATE_POINTSPRITECOORDORIGIN,                        {STATE_POINTSPRITECOORDORIGIN,                        state_nop}},
@@ -95,57 +97,9 @@ static const struct wined3d_state_entry_template misc_state_template_vk[] =
 
     {STATE_VIEWPORT,                                      {STATE_VIEWPORT,                                      state_nop}},
     {STATE_INDEXBUFFER,                                   {STATE_INDEXBUFFER,                                   state_nop}},
-    {STATE_RENDER(WINED3D_RS_ANTIALIAS),                  {STATE_RENDER(WINED3D_RS_ANTIALIAS),                  state_nop}},
-    {STATE_RENDER(WINED3D_RS_TEXTUREPERSPECTIVE),         {STATE_RENDER(WINED3D_RS_TEXTUREPERSPECTIVE),         state_nop}},
-    {STATE_RENDER(WINED3D_RS_WRAPU),                      {STATE_RENDER(WINED3D_RS_WRAPU),                      state_nop}},
-    {STATE_RENDER(WINED3D_RS_WRAPV),                      {STATE_RENDER(WINED3D_RS_WRAPV),                      state_nop}},
     {STATE_RENDER(WINED3D_RS_LINEPATTERN),                {STATE_RENDER(WINED3D_RS_LINEPATTERN),                state_nop}},
-    {STATE_RENDER(WINED3D_RS_MONOENABLE),                 {STATE_RENDER(WINED3D_RS_MONOENABLE),                 state_nop}},
-    {STATE_RENDER(WINED3D_RS_ROP2),                       {STATE_RENDER(WINED3D_RS_ROP2),                       state_nop}},
-    {STATE_RENDER(WINED3D_RS_PLANEMASK),                  {STATE_RENDER(WINED3D_RS_PLANEMASK),                  state_nop}},
-    {STATE_RENDER(WINED3D_RS_LASTPIXEL),                  {STATE_RENDER(WINED3D_RS_LASTPIXEL),                  state_nop}},
     {STATE_RENDER(WINED3D_RS_DITHERENABLE),               {STATE_RENDER(WINED3D_RS_DITHERENABLE),               state_nop}},
-    {STATE_RENDER(WINED3D_RS_SUBPIXEL),                   {STATE_RENDER(WINED3D_RS_SUBPIXEL),                   state_nop}},
-    {STATE_RENDER(WINED3D_RS_SUBPIXELX),                  {STATE_RENDER(WINED3D_RS_SUBPIXELX),                  state_nop}},
-    {STATE_RENDER(WINED3D_RS_STIPPLEDALPHA),              {STATE_RENDER(WINED3D_RS_STIPPLEDALPHA),              state_nop}},
-    {STATE_RENDER(WINED3D_RS_STIPPLEENABLE),              {STATE_RENDER(WINED3D_RS_STIPPLEENABLE),              state_nop}},
-    {STATE_RENDER(WINED3D_RS_MIPMAPLODBIAS),              {STATE_RENDER(WINED3D_RS_MIPMAPLODBIAS),              state_nop}},
-    {STATE_RENDER(WINED3D_RS_ANISOTROPY),                 {STATE_RENDER(WINED3D_RS_ANISOTROPY),                 state_nop}},
-    {STATE_RENDER(WINED3D_RS_FLUSHBATCH),                 {STATE_RENDER(WINED3D_RS_FLUSHBATCH),                 state_nop}},
-    {STATE_RENDER(WINED3D_RS_TRANSLUCENTSORTINDEPENDENT), {STATE_RENDER(WINED3D_RS_TRANSLUCENTSORTINDEPENDENT), state_nop}},
-    {STATE_RENDER(WINED3D_RS_WRAP0),                      {STATE_RENDER(WINED3D_RS_WRAP0),                      state_nop}},
-    {STATE_RENDER(WINED3D_RS_WRAP1),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP2),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP3),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP4),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP5),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP6),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP7),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP8),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP9),                      {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP10),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP11),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP12),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP13),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP14),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_WRAP15),                     {STATE_RENDER(WINED3D_RS_WRAP0)}},
-    {STATE_RENDER(WINED3D_RS_EXTENTS),                    {STATE_RENDER(WINED3D_RS_EXTENTS),                    state_nop}},
-    {STATE_RENDER(WINED3D_RS_COLORKEYBLENDENABLE),        {STATE_RENDER(WINED3D_RS_COLORKEYBLENDENABLE),        state_nop}},
-    {STATE_RENDER(WINED3D_RS_SOFTWAREVERTEXPROCESSING),   {STATE_RENDER(WINED3D_RS_SOFTWAREVERTEXPROCESSING),   state_nop}},
-    {STATE_RENDER(WINED3D_RS_PATCHEDGESTYLE),             {STATE_RENDER(WINED3D_RS_PATCHEDGESTYLE),             state_nop}},
-    {STATE_RENDER(WINED3D_RS_PATCHSEGMENTS),              {STATE_RENDER(WINED3D_RS_PATCHSEGMENTS),              state_nop}},
-    {STATE_RENDER(WINED3D_RS_POSITIONDEGREE),             {STATE_RENDER(WINED3D_RS_POSITIONDEGREE),             state_nop}},
-    {STATE_RENDER(WINED3D_RS_NORMALDEGREE),               {STATE_RENDER(WINED3D_RS_NORMALDEGREE),               state_nop}},
-    {STATE_RENDER(WINED3D_RS_MINTESSELLATIONLEVEL),       {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_MAXTESSELLATIONLEVEL),       {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_ADAPTIVETESS_X),             {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_ADAPTIVETESS_Y),             {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_ADAPTIVETESS_Z),             {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_ADAPTIVETESS_W),             {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION)}},
-    {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION), {STATE_RENDER(WINED3D_RS_ENABLEADAPTIVETESSELLATION), state_nop}},
     {STATE_RENDER(WINED3D_RS_MULTISAMPLEANTIALIAS),       {STATE_RENDER(WINED3D_RS_MULTISAMPLEANTIALIAS),       state_nop}},
-    {STATE_RENDER(WINED3D_RS_DEBUGMONITORTOKEN),          {STATE_RENDER(WINED3D_RS_DEBUGMONITORTOKEN),          state_nop}},
-    {STATE_RENDER(WINED3D_RS_ZVISIBLE),                   {STATE_RENDER(WINED3D_RS_ZVISIBLE),                   state_nop}},
     /* Samplers */
     {STATE_SAMPLER(0),                                    {STATE_SAMPLER(0),                                    state_nop}},
     {STATE_SAMPLER(1),                                    {STATE_SAMPLER(1),                                    state_nop}},
@@ -290,6 +244,7 @@ struct wined3d_physical_device_info
     VkPhysicalDeviceTransformFeedbackFeaturesEXT xfb_features;
     VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT vertex_divisor_features;
     VkPhysicalDeviceHostQueryResetFeatures host_query_reset_features;
+    VkPhysicalDeviceShaderDrawParametersFeatures draw_parameters_features;
 
     VkPhysicalDeviceFeatures2 features2;
 };
@@ -299,6 +254,7 @@ static void wined3d_disable_vulkan_features(struct wined3d_physical_device_info 
     VkPhysicalDeviceFeatures *features = &info->features2.features;
 
     features->depthBounds = VK_FALSE;
+    features->wideLines = VK_FALSE;
     features->alphaToOne = VK_FALSE;
     features->textureCompressionETC2 = VK_FALSE;
     features->textureCompressionASTC_LDR = VK_FALSE;
@@ -307,9 +263,11 @@ static void wined3d_disable_vulkan_features(struct wined3d_physical_device_info 
     features->shaderSampledImageArrayDynamicIndexing = VK_FALSE;
     features->shaderStorageBufferArrayDynamicIndexing = VK_FALSE;
     features->shaderStorageImageArrayDynamicIndexing = VK_FALSE;
+    features->shaderInt64 = VK_FALSE;
     features->shaderInt16 = VK_FALSE;
     features->shaderResourceResidency = VK_FALSE;
     features->shaderResourceMinLod = VK_FALSE;
+    features->shaderTessellationAndGeometryPointSize = VK_FALSE;
     features->sparseBinding = VK_FALSE;
     features->sparseResidencyBuffer = VK_FALSE;
     features->sparseResidencyImage2D = VK_FALSE;
@@ -376,19 +334,51 @@ static const struct wined3d_allocator_ops wined3d_allocator_vk_ops =
     .allocator_destroy_chunk = wined3d_allocator_vk_destroy_chunk,
 };
 
+static void get_physical_device_info(const struct wined3d_adapter_vk *adapter_vk, struct wined3d_physical_device_info *info)
+{
+    VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *vertex_divisor_features = &info->vertex_divisor_features;
+    VkPhysicalDeviceShaderDrawParametersFeatures *draw_parameters_features = &info->draw_parameters_features;
+    VkPhysicalDeviceHostQueryResetFeatures *host_query_reset_features = &info->host_query_reset_features;
+    VkPhysicalDeviceTransformFeedbackFeaturesEXT *xfb_features = &info->xfb_features;
+    VkPhysicalDevice physical_device = adapter_vk->physical_device;
+    const struct wined3d_vk_info *vk_info = &adapter_vk->vk_info;
+    VkPhysicalDeviceFeatures2 *features2 = &info->features2;
+
+    memset(info, 0, sizeof(*info));
+
+    draw_parameters_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+
+    if (vk_info->api_version >= VK_API_VERSION_1_1)
+        xfb_features->pNext = draw_parameters_features;
+    else
+        draw_parameters_features->shaderDrawParameters = vk_info->supported[WINED3D_VK_KHR_SHADER_DRAW_PARAMETERS];
+
+    xfb_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_FEATURES_EXT;
+
+    vertex_divisor_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT;
+    vertex_divisor_features->pNext = xfb_features;
+
+    host_query_reset_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES;
+    host_query_reset_features->pNext = vertex_divisor_features;
+
+    features2->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+    features2->pNext = host_query_reset_features;
+
+    if (vk_info->vk_ops.vkGetPhysicalDeviceFeatures2)
+        VK_CALL(vkGetPhysicalDeviceFeatures2(physical_device, features2));
+    else
+        VK_CALL(vkGetPhysicalDeviceFeatures(physical_device, &features2->features));
+}
+
 static HRESULT adapter_vk_create_device(struct wined3d *wined3d, const struct wined3d_adapter *adapter,
         enum wined3d_device_type device_type, HWND focus_window, unsigned int flags, BYTE surface_alignment,
         const enum wined3d_feature_level *levels, unsigned int level_count,
         struct wined3d_device_parent *device_parent, struct wined3d_device **device)
 {
     const struct wined3d_adapter_vk *adapter_vk = wined3d_adapter_vk_const(adapter);
-    VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *vertex_divisor_features;
-    VkPhysicalDeviceHostQueryResetFeatures *host_query_reset_features;
     const struct wined3d_vk_info *vk_info = &adapter_vk->vk_info;
-    VkPhysicalDeviceTransformFeedbackFeaturesEXT *xfb_features;
     struct wined3d_physical_device_info physical_device_info;
     static const float priorities[] = {1.0f};
-    VkPhysicalDeviceFeatures2 *features2;
     struct wined3d_device_vk *device_vk;
     VkDevice vk_device = VK_NULL_HANDLE;
     VkDeviceQueueCreateInfo queue_info;
@@ -407,36 +397,7 @@ static HRESULT adapter_vk_create_device(struct wined3d *wined3d, const struct wi
 
     physical_device = adapter_vk->physical_device;
 
-    memset(&physical_device_info, 0, sizeof(physical_device_info));
-
-    xfb_features = &physical_device_info.xfb_features;
-    xfb_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TRANSFORM_FEEDBACK_FEATURES_EXT;
-
-    vertex_divisor_features = &physical_device_info.vertex_divisor_features;
-    vertex_divisor_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT;
-    vertex_divisor_features->pNext = xfb_features;
-
-    host_query_reset_features = &physical_device_info.host_query_reset_features;
-    host_query_reset_features->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES;
-    host_query_reset_features->pNext = vertex_divisor_features;
-
-    features2 = &physical_device_info.features2;
-    features2->sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features2->pNext = host_query_reset_features;
-
-    if (vk_info->vk_ops.vkGetPhysicalDeviceFeatures2)
-        VK_CALL(vkGetPhysicalDeviceFeatures2(physical_device, features2));
-    else
-        VK_CALL(vkGetPhysicalDeviceFeatures(physical_device, &features2->features));
-
-    if (!vertex_divisor_features->vertexAttributeInstanceRateDivisor
-            || !vertex_divisor_features->vertexAttributeInstanceRateZeroDivisor)
-    {
-        WARN("Vertex attribute divisors not supported.\n");
-        hr = E_FAIL;
-        goto fail;
-    }
-
+    get_physical_device_info(adapter_vk, &physical_device_info);
     wined3d_disable_vulkan_features(&physical_device_info);
 
     queue_info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -447,7 +408,7 @@ static HRESULT adapter_vk_create_device(struct wined3d *wined3d, const struct wi
     queue_info.pQueuePriorities = priorities;
 
     device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    device_info.pNext = features2->pNext;
+    device_info.pNext = physical_device_info.features2.pNext;
     device_info.flags = 0;
     device_info.queueCreateInfoCount = 1;
     device_info.pQueueCreateInfos = &queue_info;
@@ -455,7 +416,7 @@ static HRESULT adapter_vk_create_device(struct wined3d *wined3d, const struct wi
     device_info.ppEnabledLayerNames = NULL;
     device_info.enabledExtensionCount = adapter_vk->device_extension_count;
     device_info.ppEnabledExtensionNames = adapter_vk->device_extensions;
-    device_info.pEnabledFeatures = &features2->features;
+    device_info.pEnabledFeatures = &physical_device_info.features2.features;
 
     if ((vr = VK_CALL(vkCreateDevice(physical_device, &device_info, NULL, &vk_device))) < 0)
     {
@@ -495,7 +456,7 @@ static HRESULT adapter_vk_create_device(struct wined3d *wined3d, const struct wi
     if (FAILED(hr = wined3d_device_init(&device_vk->d, wined3d, adapter->ordinal, device_type, focus_window,
             flags, surface_alignment, levels, level_count, vk_info->supported, device_parent)))
     {
-        WARN("Failed to initialize device, hr %#x.\n", hr);
+        WARN("Failed to initialize device, hr %#lx.\n", hr);
         wined3d_allocator_cleanup(&device_vk->allocator);
         goto fail;
     }
@@ -675,7 +636,7 @@ static HRESULT adapter_vk_init_3d(struct wined3d_device *device)
     if (FAILED(hr = device->shader_backend->shader_alloc_private(device,
             device->adapter->vertex_pipe, device->adapter->fragment_pipe)))
     {
-        ERR("Failed to allocate shader private data, hr %#x.\n", hr);
+        ERR("Failed to allocate shader private data, hr %#lx.\n", hr);
         wined3d_context_vk_cleanup(context_vk);
         return hr;
     }
@@ -969,16 +930,15 @@ static void *adapter_vk_map_bo_address(struct wined3d_context *context,
         if (wined3d_context_vk_create_bo(context_vk, bo->size, bo->usage, bo->memory_type, &tmp))
         {
             bool host_synced = bo->host_synced;
-            list_move_head(&tmp.b.users, &bo->b.users);
+
+            LIST_FOR_EACH_ENTRY(bo_user, &bo->b.users, struct wined3d_bo_user, entry)
+                bo_user->valid = false;
+            list_init(&bo->b.users);
+
             wined3d_context_vk_destroy_bo(context_vk, bo);
             *bo = tmp;
             bo->host_synced = host_synced;
             list_init(&bo->b.users);
-            list_move_head(&bo->b.users, &tmp.b.users);
-            LIST_FOR_EACH_ENTRY(bo_user, &bo->b.users, struct wined3d_bo_user, entry)
-            {
-                bo_user->valid = false;
-            }
 
             goto map;
         }
@@ -1077,14 +1037,13 @@ static void adapter_vk_unmap_bo_address(struct wined3d_context *context,
 
 void adapter_vk_copy_bo_address(struct wined3d_context *context,
         const struct wined3d_bo_address *dst, const struct wined3d_bo_address *src,
-        unsigned int range_count, const struct wined3d_range *ranges)
+        unsigned int range_count, const struct wined3d_range *ranges, uint32_t map_flags)
 {
     struct wined3d_context_vk *context_vk = wined3d_context_vk(context);
     const struct wined3d_vk_info *vk_info = context_vk->vk_info;
     struct wined3d_bo_vk staging_bo, *src_bo, *dst_bo;
     VkAccessFlags src_access_mask, dst_access_mask;
     VkBufferMemoryBarrier vk_barrier[2];
-    DWORD map_flags = WINED3D_MAP_WRITE;
     const struct wined3d_range *range;
     struct wined3d_bo_address staging;
     VkCommandBuffer vk_command_buffer;
@@ -1095,9 +1054,6 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
     src_bo = src->buffer_object ? wined3d_bo_vk(src->buffer_object) : NULL;
     dst_bo = dst->buffer_object ? wined3d_bo_vk(dst->buffer_object) : NULL;
-
-    if (dst_bo && !dst->addr && !ranges->offset && ranges->size == dst_bo->size)
-        map_flags |= WINED3D_MAP_DISCARD;
 
     if (src_bo && dst_bo)
     {
@@ -1179,8 +1135,8 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
         staging.buffer_object = &staging_bo.b;
         staging.addr = NULL;
-        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges);
-        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges);
+        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges, WINED3D_MAP_WRITE);
+        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges, WINED3D_MAP_WRITE);
 
         wined3d_context_vk_destroy_bo(context_vk, &staging_bo);
 
@@ -1199,8 +1155,8 @@ void adapter_vk_copy_bo_address(struct wined3d_context *context,
 
         staging.buffer_object = &staging_bo.b;
         staging.addr = NULL;
-        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges);
-        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges);
+        adapter_vk_copy_bo_address(context, &staging, src, range_count, ranges, WINED3D_MAP_WRITE);
+        adapter_vk_copy_bo_address(context, dst, &staging, range_count, ranges, WINED3D_MAP_WRITE);
 
         wined3d_context_vk_destroy_bo(context_vk, &staging_bo);
 
@@ -1284,7 +1240,7 @@ static void adapter_vk_destroy_bo(struct wined3d_context *context, struct wined3
 }
 
 static HRESULT adapter_vk_create_swapchain(struct wined3d_device *device,
-        struct wined3d_swapchain_desc *desc, struct wined3d_swapchain_state_parent *state_parent,
+        const struct wined3d_swapchain_desc *desc, struct wined3d_swapchain_state_parent *state_parent,
         void *parent, const struct wined3d_parent_ops *parent_ops, struct wined3d_swapchain **swapchain)
 {
     struct wined3d_swapchain_vk *swapchain_vk;
@@ -1299,7 +1255,7 @@ static HRESULT adapter_vk_create_swapchain(struct wined3d_device *device,
     if (FAILED(hr = wined3d_swapchain_vk_init(swapchain_vk, device, desc, state_parent, parent,
             parent_ops)))
     {
-        WARN("Failed to initialise swapchain, hr %#x.\n", hr);
+        WARN("Failed to initialise swapchain, hr %#lx.\n", hr);
         heap_free(swapchain_vk);
         return hr;
     }
@@ -1350,7 +1306,7 @@ static HRESULT adapter_vk_create_buffer(struct wined3d_device *device,
 
     if (FAILED(hr = wined3d_buffer_vk_init(buffer_vk, device, desc, data, parent, parent_ops)))
     {
-        WARN("Failed to initialise buffer, hr %#x.\n", hr);
+        WARN("Failed to initialise buffer, hr %#lx.\n", hr);
         heap_free(buffer_vk);
         return hr;
     }
@@ -1397,7 +1353,7 @@ static HRESULT adapter_vk_create_texture(struct wined3d_device *device,
     if (FAILED(hr = wined3d_texture_vk_init(texture_vk, device, desc,
             layer_count, level_count, flags, parent, parent_ops)))
     {
-        WARN("Failed to initialise texture, hr %#x.\n", hr);
+        WARN("Failed to initialise texture, hr %#lx.\n", hr);
         heap_free(texture_vk);
         return hr;
     }
@@ -1448,7 +1404,7 @@ static HRESULT adapter_vk_create_rendertarget_view(const struct wined3d_view_des
 
     if (FAILED(hr = wined3d_rendertarget_view_vk_init(view_vk, desc, resource, parent, parent_ops)))
     {
-        WARN("Failed to initialise view, hr %#x.\n", hr);
+        WARN("Failed to initialise view, hr %#lx.\n", hr);
         heap_free(view_vk);
         return hr;
     }
@@ -1511,7 +1467,7 @@ static void wined3d_view_vk_destroy_object(void *object)
             TRACE("Destroyed image view 0x%s.\n", wine_dbgstr_longlong(*ctx->vk_image_view));
         }
     }
-    if (ctx->bo_user)
+    if (ctx->bo_user && ctx->bo_user->valid)
         list_remove(&ctx->bo_user->entry);
     if (ctx->vk_counter_bo && ctx->vk_counter_bo->vk_buffer)
         wined3d_context_vk_destroy_bo(wined3d_context_vk(context), ctx->vk_counter_bo);
@@ -1566,13 +1522,9 @@ static void adapter_vk_destroy_rendertarget_view(struct wined3d_rendertarget_vie
 
     TRACE("view_vk %p.\n", view_vk);
 
-    /* Take a reference to the resource, in case releasing the resource
-     * would cause the device to be destroyed. */
-    wined3d_resource_incref(resource);
     wined3d_rendertarget_view_cleanup(&view_vk->v);
     wined3d_view_vk_destroy(resource->device, NULL, &view_vk->vk_image_view,
             NULL, NULL, NULL, &view_vk->command_buffer_id, view_vk);
-    wined3d_resource_decref(resource);
 }
 
 static HRESULT adapter_vk_create_shader_resource_view(const struct wined3d_view_desc *desc,
@@ -1590,7 +1542,7 @@ static HRESULT adapter_vk_create_shader_resource_view(const struct wined3d_view_
 
     if (FAILED(hr = wined3d_shader_resource_view_vk_init(view_vk, desc, resource, parent, parent_ops)))
     {
-        WARN("Failed to initialise view, hr %#x.\n", hr);
+        WARN("Failed to initialise view, hr %#lx.\n", hr);
         heap_free(view_vk);
         return hr;
     }
@@ -1611,13 +1563,6 @@ static void adapter_vk_destroy_shader_resource_view(struct wined3d_shader_resour
 
     TRACE("srv_vk %p.\n", srv_vk);
 
-    /* Take a reference to the resource. There are two reasons for this:
-     *  - Releasing the resource could in turn cause the device to be
-     *    destroyed, but we still need the device for
-     *    wined3d_view_vk_destroy().
-     *  - We shouldn't free buffer resources until after we've removed the
-     *    view from its bo_user list. */
-    wined3d_resource_incref(resource);
     if (resource->type == WINED3D_RTYPE_BUFFER)
         vk_buffer_view = &view_vk->u.vk_buffer_view;
     else
@@ -1625,7 +1570,6 @@ static void adapter_vk_destroy_shader_resource_view(struct wined3d_shader_resour
     wined3d_shader_resource_view_cleanup(&srv_vk->v);
     wined3d_view_vk_destroy(resource->device, vk_buffer_view, vk_image_view,
             &view_vk->bo_user, NULL, NULL, &view_vk->command_buffer_id, srv_vk);
-    wined3d_resource_decref(resource);
 }
 
 static HRESULT adapter_vk_create_unordered_access_view(const struct wined3d_view_desc *desc,
@@ -1643,7 +1587,7 @@ static HRESULT adapter_vk_create_unordered_access_view(const struct wined3d_view
 
     if (FAILED(hr = wined3d_unordered_access_view_vk_init(view_vk, desc, resource, parent, parent_ops)))
     {
-        WARN("Failed to initialise view, hr %#x.\n", hr);
+        WARN("Failed to initialise view, hr %#lx.\n", hr);
         heap_free(view_vk);
         return hr;
     }
@@ -1664,13 +1608,6 @@ static void adapter_vk_destroy_unordered_access_view(struct wined3d_unordered_ac
 
     TRACE("uav_vk %p.\n", uav_vk);
 
-    /* Take a reference to the resource. There are two reasons for this:
-     *  - Releasing the resource could in turn cause the device to be
-     *    destroyed, but we still need the device for
-     *    wined3d_view_vk_destroy().
-     *  - We shouldn't free buffer resources until after we've removed the
-     *    view from its bo_user list. */
-    wined3d_resource_incref(resource);
     if (resource->type == WINED3D_RTYPE_BUFFER)
         vk_buffer_view = &view_vk->u.vk_buffer_view;
     else
@@ -1678,7 +1615,6 @@ static void adapter_vk_destroy_unordered_access_view(struct wined3d_unordered_ac
     wined3d_unordered_access_view_cleanup(&uav_vk->v);
     wined3d_view_vk_destroy(resource->device, vk_buffer_view, vk_image_view, &view_vk->bo_user,
             &uav_vk->counter_bo, &uav_vk->vk_counter_view, &view_vk->command_buffer_id, uav_vk);
-    wined3d_resource_decref(resource);
 }
 
 static HRESULT adapter_vk_create_sampler(struct wined3d_device *device, const struct wined3d_sampler_desc *desc,
@@ -1768,7 +1704,6 @@ static void adapter_vk_draw_primitive(struct wined3d_device *device,
     struct wined3d_context_vk *context_vk;
     VkCommandBuffer vk_command_buffer;
     uint32_t instance_count;
-    unsigned int i;
 
     TRACE("device %p, state %p, parameters %p.\n", device, state, parameters);
 
@@ -1788,20 +1723,6 @@ static void adapter_vk_draw_primitive(struct wined3d_device *device,
 
     if (context_vk->c.transform_feedback_active)
     {
-        if (!context_vk->vk_so_counter_bo.vk_buffer)
-        {
-            struct wined3d_bo_vk *bo = &context_vk->vk_so_counter_bo;
-
-            if (!wined3d_context_vk_create_bo(context_vk, ARRAY_SIZE(context_vk->vk_so_counters) * sizeof(uint32_t) * 2,
-                    VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, bo))
-                ERR("Failed to create counter BO.\n");
-            for (i = 0; i < ARRAY_SIZE(context_vk->vk_so_counters); ++i)
-            {
-                context_vk->vk_so_counters[i] = bo->vk_buffer;
-                context_vk->vk_so_offsets[i] = bo->b.buffer_offset + i * sizeof(uint32_t) * 2;
-            }
-        }
-
         wined3d_context_vk_reference_bo(context_vk, &context_vk->vk_so_counter_bo);
         if (context_vk->c.transform_feedback_paused)
             VK_CALL(vkCmdBeginTransformFeedbackEXT(vk_command_buffer, 0, ARRAY_SIZE(context_vk->vk_so_counters),
@@ -1825,8 +1746,6 @@ static void adapter_vk_draw_primitive(struct wined3d_device *device,
     else
     {
         instance_count = parameters->u.direct.instance_count;
-        if (context_vk->c.instance_count)
-            instance_count = context_vk->c.instance_count;
         if (!instance_count)
             instance_count = 1;
 
@@ -2251,7 +2170,54 @@ static bool adapter_vk_init_driver_info(struct wined3d_adapter_vk *adapter_vk,
             adapter_vk->a.d3d_info.feature_level, vram_bytes, sysmem_bytes);
 }
 
-static enum wined3d_feature_level feature_level_from_caps(const struct shader_caps *shader_caps)
+static bool feature_level_9_2_supported(const struct wined3d_physical_device_info *info)
+{
+    return info->features2.features.occlusionQueryPrecise;
+}
+
+static bool feature_level_9_3_supported(const struct wined3d_physical_device_info *info, unsigned int shader_model)
+{
+    return shader_model >= 3
+            && info->features2.features.independentBlend;
+}
+
+static bool feature_level_10_supported(const struct wined3d_physical_device_info *info, unsigned int shader_model)
+{
+    return shader_model >= 4
+            && info->features2.features.multiViewport
+            && info->features2.features.geometryShader
+            && info->features2.features.depthClamp
+            && info->features2.features.depthBiasClamp
+            && info->features2.features.pipelineStatisticsQuery
+            && info->features2.features.shaderClipDistance
+            && info->features2.features.shaderCullDistance
+            && info->draw_parameters_features.shaderDrawParameters
+            && info->vertex_divisor_features.vertexAttributeInstanceRateDivisor
+            && info->vertex_divisor_features.vertexAttributeInstanceRateZeroDivisor;
+}
+
+static bool feature_level_10_1_supported(const struct wined3d_physical_device_info *info, unsigned int shader_model)
+{
+    return info->features2.features.imageCubeArray;
+}
+
+static bool feature_level_11_supported(const struct wined3d_physical_device_info *info, unsigned int shader_model)
+{
+    return shader_model >= 5
+            && info->features2.features.multiDrawIndirect
+            && info->features2.features.drawIndirectFirstInstance
+            && info->features2.features.fragmentStoresAndAtomics
+            && info->features2.features.shaderImageGatherExtended
+            && info->features2.features.tessellationShader;
+}
+
+static bool feature_level_11_1_supported(const struct wined3d_physical_device_info *info)
+{
+    return info->features2.features.vertexPipelineStoresAndAtomics;
+}
+
+static enum wined3d_feature_level feature_level_from_caps(const struct wined3d_physical_device_info *info,
+        const struct shader_caps *shader_caps)
 {
     unsigned int shader_model;
 
@@ -2260,25 +2226,54 @@ static enum wined3d_feature_level feature_level_from_caps(const struct shader_ca
     shader_model = min(shader_model, max(shader_caps->hs_version, 4));
     shader_model = min(shader_model, max(shader_caps->ds_version, 4));
 
-    if (shader_model >= 5)
-        return WINED3D_FEATURE_LEVEL_11_1;
+    if (!shader_model)
+        return WINED3D_FEATURE_LEVEL_7;
 
-    if (shader_model >= 4)
-        return WINED3D_FEATURE_LEVEL_11_1;
+    if (shader_model <= 1)
+        return WINED3D_FEATURE_LEVEL_8;
 
-    return WINED3D_FEATURE_LEVEL_NONE;
+    if (!feature_level_9_2_supported(info))
+        return WINED3D_FEATURE_LEVEL_9_1;
+
+    if (!feature_level_9_3_supported(info, shader_model))
+        return WINED3D_FEATURE_LEVEL_9_2;
+
+    if (!feature_level_10_supported(info, shader_model))
+        return WINED3D_FEATURE_LEVEL_9_3;
+
+    if (!feature_level_10_1_supported(info, shader_model))
+        return WINED3D_FEATURE_LEVEL_10;
+
+    if (!feature_level_11_supported(info, shader_model))
+        return WINED3D_FEATURE_LEVEL_10_1;
+
+    if (!feature_level_11_1_supported(info))
+        return WINED3D_FEATURE_LEVEL_11;
+
+    return WINED3D_FEATURE_LEVEL_11_1;
 }
 
 static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_vk, uint32_t wined3d_creation_flags)
 {
     struct wined3d_d3d_info *d3d_info = &adapter_vk->a.d3d_info;
+    struct wined3d_vk_info *vk_info = &adapter_vk->vk_info;
+    struct wined3d_physical_device_info device_info;
     struct wined3d_vertex_caps vertex_caps;
-    struct fragment_caps fragment_caps;
+    unsigned int sample_counts_mask;
     struct shader_caps shader_caps;
+    bool moltenvk;
+
+    get_physical_device_info(adapter_vk, &device_info);
+
+    if (!device_info.host_query_reset_features.hostQueryReset)
+        adapter_vk->vk_info.supported[WINED3D_VK_EXT_HOST_QUERY_RESET] = FALSE;
+
+    if (!device_info.xfb_features.transformFeedback)
+        adapter_vk->vk_info.supported[WINED3D_VK_EXT_TRANSFORM_FEEDBACK] = FALSE;
 
     adapter_vk->a.shader_backend->shader_get_caps(&adapter_vk->a, &shader_caps);
     adapter_vk->a.vertex_pipe->vp_get_caps(&adapter_vk->a, &vertex_caps);
-    adapter_vk->a.fragment_pipe->get_caps(&adapter_vk->a, &fragment_caps);
+    adapter_vk->a.fragment_pipe->get_caps(&adapter_vk->a, &d3d_info->ffp_fragment_caps);
 
     d3d_info->limits.vs_version = shader_caps.vs_version;
     d3d_info->limits.hs_version = shader_caps.hs_version;
@@ -2289,8 +2284,6 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->limits.vs_uniform_count = shader_caps.vs_uniform_count;
     d3d_info->limits.ps_uniform_count = shader_caps.ps_uniform_count;
     d3d_info->limits.varying_count = shader_caps.varying_count;
-    d3d_info->limits.ffp_textures = fragment_caps.MaxSimultaneousTextures;
-    d3d_info->limits.ffp_blend_stages = fragment_caps.MaxTextureBlendStages;
     d3d_info->limits.ffp_vertex_blend_matrices = vertex_caps.max_vertex_blend_matrices;
     d3d_info->limits.active_light_count = vertex_caps.max_active_lights;
 
@@ -2298,6 +2291,11 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->limits.max_clip_distances = WINED3D_MAX_CLIP_DISTANCES;
     d3d_info->limits.texture_size = adapter_vk->device_limits.maxImageDimension2D;
     d3d_info->limits.pointsize_max = adapter_vk->device_limits.pointSizeRange[1];
+    sample_counts_mask = adapter_vk->device_limits.framebufferColorSampleCounts
+            | adapter_vk->device_limits.framebufferDepthSampleCounts
+            | adapter_vk->device_limits.framebufferStencilSampleCounts
+            | adapter_vk->device_limits.framebufferNoAttachmentsSampleCounts;
+    d3d_info->limits.sample_count = (1u << wined3d_log2i(sample_counts_mask));
 
     d3d_info->wined3d_creation_flags = wined3d_creation_flags;
 
@@ -2306,12 +2304,12 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->ffp_generic_attributes = vertex_caps.ffp_generic_attributes;
     d3d_info->ffp_alpha_test = false;
     d3d_info->vs_clipping = !!(shader_caps.wined3d_caps & WINED3D_SHADER_CAP_VS_CLIPPING);
-    d3d_info->shader_color_key = !!(fragment_caps.wined3d_caps & WINED3D_FRAGMENT_CAP_COLOR_KEY);
     d3d_info->shader_double_precision = !!(shader_caps.wined3d_caps & WINED3D_SHADER_CAP_DOUBLE_PRECISION);
     d3d_info->shader_output_interpolation = !!(shader_caps.wined3d_caps & WINED3D_SHADER_CAP_OUTPUT_INTERPOLATION);
     d3d_info->viewport_array_index_any_shader = false; /* VK_EXT_shader_viewport_index_layer */
     d3d_info->texture_npot = true;
     d3d_info->texture_npot_conditional = true;
+    d3d_info->normalized_texrect = false;
     d3d_info->draw_base_vertex_offset = true;
     d3d_info->vertex_bgra = true;
     d3d_info->texture_swizzle = true;
@@ -2322,7 +2320,7 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->scaled_resolve = false;
     d3d_info->multithread_safe = true;
     d3d_info->pbo = true;
-    d3d_info->feature_level = feature_level_from_caps(&shader_caps);
+    d3d_info->feature_level = feature_level_from_caps(&device_info, &shader_caps);
     d3d_info->subpixel_viewport = true;
     d3d_info->fences = true;
     d3d_info->persistent_map = true;
@@ -2336,6 +2334,10 @@ static void wined3d_adapter_vk_init_d3d_info(struct wined3d_adapter_vk *adapter_
     d3d_info->filling_convention_offset = 0.0f;
 
     d3d_info->multisample_draw_location = WINED3D_LOCATION_TEXTURE_RGB;
+
+    /* HACK: Disable multiple viewports when running with MoltenVK. As of writing, it causes glitches in multiple games. */
+    moltenvk = adapter_vk->driver_properties.driverID == VK_DRIVER_ID_MOLTENVK;
+    if (!moltenvk) vk_info->multiple_viewports = device_info.features2.features.multiViewport;
 }
 
 static bool wined3d_adapter_vk_init_device_extensions(struct wined3d_adapter_vk *adapter_vk)
@@ -2361,7 +2363,7 @@ static bool wined3d_adapter_vk_init_device_extensions(struct wined3d_adapter_vk 
         {VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,    ~0u,                true},
         {VK_KHR_MAINTENANCE1_EXTENSION_NAME,                VK_API_VERSION_1_1, true},
         {VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME,VK_API_VERSION_1_2},
-        {VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,      VK_API_VERSION_1_1, true},
+        {VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,      VK_API_VERSION_1_1},
         {VK_KHR_SWAPCHAIN_EXTENSION_NAME,                   ~0u,                true},
         {VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,            VK_API_VERSION_1_2},
         {VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,           VK_API_VERSION_1_2},
@@ -2376,6 +2378,7 @@ static bool wined3d_adapter_vk_init_device_extensions(struct wined3d_adapter_vk 
     {
         {VK_EXT_TRANSFORM_FEEDBACK_EXTENSION_NAME,           WINED3D_VK_EXT_TRANSFORM_FEEDBACK},
         {VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME, WINED3D_VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE},
+        {VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,       WINED3D_VK_KHR_SHADER_DRAW_PARAMETERS},
         {VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,             WINED3D_VK_EXT_HOST_QUERY_RESET},
     };
 
@@ -2501,7 +2504,7 @@ static BOOL wined3d_adapter_vk_init(struct wined3d_adapter_vk *adapter_vk,
         VK_CALL(vkGetPhysicalDeviceProperties(adapter_vk->physical_device, &properties2.properties));
     adapter_vk->device_limits = properties2.properties.limits;
 
-    /* CW HACK 18311: Use VK on 64-bit macOS for d3d10/11. */
+    /* CW HACK 18311: Use the Vulkan renderer on macOS for d3d10/11. */
     if (wined3d_settings.renderer == WINED3D_RENDERER_AUTO)
     {
         bool d3d10 = !(wined3d_creation_flags & WINED3D_PIXEL_CENTER_INTEGER);

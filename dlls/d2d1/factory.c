@@ -36,29 +36,7 @@ static void d2d_effect_registration_cleanup(struct d2d_effect_registration *reg)
     free(reg);
 }
 
-struct d2d_factory
-{
-    ID2D1Factory3 ID2D1Factory3_iface;
-    ID2D1Multithread ID2D1Multithread_iface;
-    LONG refcount;
-
-    ID3D10Device1 *device;
-
-    float dpi_x;
-    float dpi_y;
-
-    struct list effects;
-    INIT_ONCE init_builtins;
-
-    CRITICAL_SECTION cs;
-};
-
 static inline struct d2d_factory *impl_from_ID2D1Factory3(ID2D1Factory3 *iface)
-{
-    return CONTAINING_RECORD(iface, struct d2d_factory, ID2D1Factory3_iface);
-}
-
-static inline struct d2d_factory *unsafe_impl_from_ID2D1Factory(ID2D1Factory *iface)
 {
     return CONTAINING_RECORD(iface, struct d2d_factory, ID2D1Factory3_iface);
 }
@@ -495,7 +473,8 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDxgiSurfaceRenderTarget(ID2D1
         return hr;
     }
 
-    hr = d2d_d3d_create_render_target(device, surface, NULL, NULL, desc, (void **)render_target);
+    hr = d2d_d3d_create_render_target(unsafe_impl_from_ID2D1Device((ID2D1Device1 *)device), surface,
+            NULL, NULL, desc, (void **)render_target);
     ID2D1Device_Release(device);
     return hr;
 }
@@ -529,12 +508,9 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDCRenderTarget(ID2D1Factory3 
     return S_OK;
 }
 
-static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDevice(ID2D1Factory3 *iface,
-        IDXGIDevice *dxgi_device, ID2D1Device **device)
-{
+static HRESULT d2d_factory_create_device(ID2D1Factory3 *iface, IDXGIDevice *dxgi_device,
+        ID2D1Device1 **device) {
     struct d2d_device *object;
-
-    TRACE("iface %p, dxgi_device %p, device %p.\n", iface, dxgi_device, device);
 
     if (!(object = calloc(1, sizeof(*object))))
         return E_OUTOFMEMORY;
@@ -542,9 +518,17 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDevice(ID2D1Factory3 *iface,
     d2d_device_init(object, (ID2D1Factory1 *)iface, dxgi_device);
 
     TRACE("Create device %p.\n", object);
-    *device = &object->ID2D1Device_iface;
+    *device = &object->ID2D1Device1_iface;
 
     return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE d2d_factory_CreateDevice(ID2D1Factory3 *iface,
+        IDXGIDevice *dxgi_device, ID2D1Device **device)
+{
+    TRACE("iface %p, dxgi_device %p, device %p.\n", iface, dxgi_device, device);
+
+    return d2d_factory_create_device(iface, dxgi_device, (ID2D1Device1 **)device);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_CreateStrokeStyle1(ID2D1Factory3 *iface,
@@ -1080,9 +1064,9 @@ static HRESULT STDMETHODCALLTYPE d2d_factory_GetEffectProperties(ID2D1Factory3 *
 static HRESULT STDMETHODCALLTYPE d2d_factory_ID2D1Factory2_CreateDevice(ID2D1Factory3 *iface, IDXGIDevice *dxgi_device,
         ID2D1Device1 **device)
 {
-    FIXME("iface %p, dxgi_device %p, device %p stub!\n", iface, dxgi_device, device);
+    TRACE("iface %p, dxgi_device %p, device %p.\n", iface, dxgi_device, device);
 
-    return E_NOTIMPL;
+    return d2d_factory_create_device(iface, dxgi_device, device);
 }
 
 static HRESULT STDMETHODCALLTYPE d2d_factory_ID2D1Factory3_CreateDevice(ID2D1Factory3 *iface, IDXGIDevice *dxgi_device,
@@ -1209,6 +1193,7 @@ static void d2d_factory_init(struct d2d_factory *factory, D2D1_FACTORY_TYPE fact
     factory->ID2D1Factory3_iface.lpVtbl = &d2d_factory_vtbl;
     factory->ID2D1Multithread_iface.lpVtbl = factory_type == D2D1_FACTORY_TYPE_SINGLE_THREADED ?
             &d2d_factory_multithread_noop_vtbl : &d2d_factory_multithread_vtbl;
+    factory->factory_type = factory_type;
     factory->refcount = 1;
     d2d_factory_reload_sysmetrics(factory);
     list_init(&factory->effects);
@@ -1302,6 +1287,7 @@ HRESULT WINAPI D2D1CreateDevice(IDXGIDevice *dxgi_device,
 {
     D2D1_CREATION_PROPERTIES default_properties = {0};
     D2D1_FACTORY_OPTIONS factory_options;
+    D2D1_FACTORY_TYPE factory_type;
     ID3D11Device *d3d_device;
     ID2D1Factory1 *factory;
     HRESULT hr;
@@ -1319,9 +1305,20 @@ HRESULT WINAPI D2D1CreateDevice(IDXGIDevice *dxgi_device,
         properties = &default_properties;
     }
 
+    switch (properties->threadingMode)
+    {
+    case D2D1_THREADING_MODE_SINGLE_THREADED:
+        factory_type = D2D1_FACTORY_TYPE_SINGLE_THREADED;
+        break;
+    case D2D1_THREADING_MODE_MULTI_THREADED:
+        factory_type = D2D1_FACTORY_TYPE_MULTI_THREADED;
+        break;
+    default:
+        return E_INVALIDARG;
+    }
+
     factory_options.debugLevel = properties->debugLevel;
-    if (FAILED(hr = D2D1CreateFactory(properties->threadingMode,
-            &IID_ID2D1Factory1, &factory_options, (void **)&factory)))
+    if (FAILED(hr = D2D1CreateFactory(factory_type, &IID_ID2D1Factory1, &factory_options, (void **)&factory)))
         return hr;
 
     hr = ID2D1Factory1_CreateDevice(factory, dxgi_device, device);

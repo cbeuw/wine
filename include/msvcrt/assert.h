@@ -18,8 +18,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "wine/winheader_enter.h"
-
 #include <corecrt.h>
 
 #ifdef  __cplusplus
@@ -30,12 +28,10 @@ extern "C" {
 #ifdef NDEBUG
 #define assert(_expr) ((void)0)
 #else
-_ACRTIMP void __cdecl _assert(const char *, const char *, unsigned int);
+_ACRTIMP DECLSPEC_NORETURN void __cdecl _assert(const char *, const char *, unsigned int);
 #define assert(_expr) (void)((!!(_expr)) || (_assert(#_expr, __FILE__, __LINE__), 0))
 #endif
 
 #ifdef  __cplusplus
 }
-#include "wine/winheader_exit.h"
-
 #endif

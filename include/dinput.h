@@ -19,8 +19,6 @@
 #ifndef __DINPUT_INCLUDED__
 #define __DINPUT_INCLUDED__
 
-#include "wine/winheader_enter.h"
-
 #define COM_NO_WINDOWS_H
 #include <objbase.h>
 
@@ -2174,6 +2172,12 @@ extern const DIDATAFORMAT c_dfDIJoystick2;
 };
 #endif
 
+#define DIVIRTUAL_DRIVING_RACE     0x01000000
+#define DIAXIS_DRIVINGR_STEER      0x01008a01
+#define DIAXIS_DRIVINGR_ACCELERATE 0x01039202
+
+#define DIVOICE_CHANNEL1           0x83000401
+
 #define DIAXIS_ANY_X_1             0xFF00C201
 #define DIAXIS_ANY_X_2             0xFF00C202
 #define DIAXIS_ANY_Y_1             0xFF014201
@@ -2563,7 +2567,5 @@ HRESULT WINAPI DirectInputCreateEx(HINSTANCE,DWORD,REFIID,LPVOID *,LPUNKNOWN);
 #ifdef __cplusplus
 };
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* __DINPUT_INCLUDED__ */

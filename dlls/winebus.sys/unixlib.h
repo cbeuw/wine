@@ -46,6 +46,7 @@ struct device_desc
 
 struct sdl_bus_options
 {
+    BOOL split_controllers;
     BOOL map_controllers;
     /* freed after bus_init */
     UINT mappings_count;
@@ -147,6 +148,7 @@ enum unix_funcs
     device_set_output_report,
     device_get_feature_report,
     device_set_feature_report,
+    unix_funcs_count,
 };
 
 static inline const char *debugstr_device_desc(struct device_desc *desc)

@@ -21,18 +21,23 @@
 
 #define COBJMACROS
 
+#include "ntstatus.h"
+#define WIN32_NO_STATUS
 #include "windef.h"
 #include "winbase.h"
 #include "wingdi.h"
 #include "winuser.h"
+#include "ntuser.h"
 #include "initguid.h"
 #include "ocidl.h"
 #include "featurestagingapi.h"
 #include "shellscalingapi.h"
+#include "shcore.h"
+#define WINSHLWAPI
 #include "shlwapi.h"
+#include "appmodel.h"
 
 #include "wine/debug.h"
-#include "wine/heap.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(shcore);
 
@@ -67,7 +72,7 @@ HRESULT WINAPI GetProcessDpiAwareness(HANDLE process, PROCESS_DPI_AWARENESS *val
 
 HRESULT WINAPI SetProcessDpiAwareness(PROCESS_DPI_AWARENESS value)
 {
-    if (SetProcessDpiAwarenessInternal( value )) return S_OK;
+    if (SetProcessDpiAwarenessInternal( (DPI_AWARENESS)value )) return S_OK;
     return HRESULT_FROM_WIN32( GetLastError() );
 }
 
@@ -250,15 +255,47 @@ HRESULT WINAPI IUnknown_SetSite(IUnknown *obj, IUnknown *site)
 
 HRESULT WINAPI SetCurrentProcessExplicitAppUserModelID(const WCHAR *appid)
 {
-    FIXME("%s: stub\n", debugstr_w(appid));
-    return S_OK;
+    NTSTATUS status;
+    INT len;
+
+    FIXME("%s: semi-stub\n", debugstr_w(appid));
+
+    /* CW Hack 22310 */
+
+    if (!appid) return E_INVALIDARG;
+
+    len = lstrlenW(appid) + 1;
+    /* Native does not enforce the minimum length. */
+    if (len > APPLICATION_USER_MODEL_ID_MAX_LENGTH) return E_INVALIDARG;
+
+    status = __wine_set_current_process_explicit_app_user_model_id(appid);
+    return status ? E_INVALIDARG : S_OK;
 }
 
 HRESULT WINAPI GetCurrentProcessExplicitAppUserModelID(const WCHAR **appid)
 {
-    FIXME("%p: stub\n", appid);
-    *appid = NULL;
-    return E_NOTIMPL;
+    WCHAR *buffer;
+    NTSTATUS status;
+
+    FIXME("%p: semi-stub\n", appid);
+
+    /* CW Hack 22310 */
+
+    if (!appid) return E_INVALIDARG;
+
+    buffer = CoTaskMemAlloc(APPLICATION_USER_MODEL_ID_MAX_LENGTH * sizeof(WCHAR));
+    if (!buffer) return E_OUTOFMEMORY;
+
+    status = __wine_get_current_process_explicit_app_user_model_id(buffer, APPLICATION_USER_MODEL_ID_MAX_LENGTH);
+    if (status)
+    {
+        /* Shouldn't happen; there should be enough space for any AUMID. */
+        CoTaskMemFree(buffer);
+        return E_OUTOFMEMORY;
+    }
+
+    *appid = buffer;
+    return S_OK;
 }
 
 /*************************************************************************
@@ -587,8 +624,8 @@ static ULONG WINAPI memstream_Release(IStream *iface)
 
     if (!refcount)
     {
-        heap_free(stream->u.mem.buffer);
-        heap_free(stream);
+        free(stream->u.mem.buffer);
+        free(stream);
     }
 
     return refcount;
@@ -633,7 +670,7 @@ static HRESULT WINAPI memstream_Write(IStream *iface, const void *buff, ULONG bu
 
     if (length > stream->u.mem.length)
     {
-        BYTE *buffer = HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, stream->u.mem.buffer, length);
+        BYTE *buffer = _recalloc(stream->u.mem.buffer, 1, length);
         if (!buffer)
             return STG_E_INSUFFICIENTMEMORY;
 
@@ -686,7 +723,7 @@ static HRESULT WINAPI memstream_SetSize(IStream *iface, ULARGE_INTEGER new_size)
 
     /* we cut off the high part here */
     length = new_size.u.LowPart;
-    buffer = HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, stream->u.mem.buffer, length);
+    buffer = _recalloc(stream->u.mem.buffer, 1, length);
     if (!buffer)
         return STG_E_INSUFFICIENTMEMORY;
 
@@ -835,13 +872,13 @@ static struct shstream *shstream_create(const IStreamVtbl *vtbl, const BYTE *dat
     if (!data)
         data_len = 0;
 
-    stream = heap_alloc(sizeof(*stream));
+    stream = malloc(sizeof(*stream));
     stream->IStream_iface.lpVtbl = vtbl;
     stream->refcount = 1;
-    stream->u.mem.buffer = heap_alloc(data_len);
+    stream->u.mem.buffer = malloc(data_len);
     if (!stream->u.mem.buffer)
     {
-        heap_free(stream);
+        free(stream);
         return NULL;
     }
     memcpy(stream->u.mem.buffer, data, data_len);
@@ -887,8 +924,8 @@ static ULONG WINAPI filestream_Release(IStream *iface)
     if (!refcount)
     {
         CloseHandle(stream->u.file.handle);
-        heap_free(stream->u.file.path);
-        heap_free(stream);
+        free(stream->u.file.path);
+        free(stream);
     }
 
     return refcount;
@@ -1156,14 +1193,14 @@ HRESULT WINAPI SHCreateStreamOnFileEx(const WCHAR *path, DWORD mode, DWORD attri
     if (hFile == INVALID_HANDLE_VALUE)
         return HRESULT_FROM_WIN32(GetLastError());
 
-    stream = heap_alloc(sizeof(*stream));
+    stream = malloc(sizeof(*stream));
     stream->IStream_iface.lpVtbl = &filestreamvtbl;
     stream->refcount = 1;
     stream->u.file.handle = hFile;
     stream->u.file.mode = mode;
 
     len = lstrlenW(path);
-    stream->u.file.path = heap_alloc((len + 1) * sizeof(WCHAR));
+    stream->u.file.path = malloc((len + 1) * sizeof(WCHAR));
     memcpy(stream->u.file.path, path, (len + 1) * sizeof(WCHAR));
 
     *ret = &stream->IStream_iface;
@@ -1202,13 +1239,13 @@ HRESULT WINAPI SHCreateStreamOnFileA(const char *path, DWORD mode, IStream **str
         return HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND);
 
     len = MultiByteToWideChar(CP_ACP, 0, path, -1, NULL, 0);
-    pathW = heap_alloc(len * sizeof(WCHAR));
+    pathW = malloc(len * sizeof(WCHAR));
     if (!pathW)
         return E_OUTOFMEMORY;
 
     MultiByteToWideChar(CP_ACP, 0, path, -1, pathW, len);
     hr = SHCreateStreamOnFileW(pathW, mode, stream);
-    heap_free(pathW);
+    free(pathW);
 
     return hr;
 }
@@ -1232,8 +1269,8 @@ static ULONG WINAPI regstream_Release(IStream *iface)
             RegCloseKey(stream->u.mem.hkey);
         }
         CoTaskMemFree(stream->u.mem.valuename);
-        heap_free(stream->u.mem.buffer);
-        heap_free(stream);
+        free(stream->u.mem.buffer);
+        free(stream);
     }
 
     return refcount;
@@ -1283,16 +1320,16 @@ IStream * WINAPI SHOpenRegStream2W(HKEY hKey, const WCHAR *subkey, const WCHAR *
             ret = RegQueryValueExW(hStrKey, value, 0, 0, 0, &length);
             if (ret == ERROR_SUCCESS && length)
             {
-                buff = heap_alloc(length);
+                buff = malloc(length);
                 RegQueryValueExW(hStrKey, value, 0, 0, buff, &length);
             }
         }
 
         if (!length)
-            buff = heap_alloc(length);
+            buff = malloc(length);
 
         stream = shstream_create(&regstreamvtbl, buff, length);
-        heap_free(buff);
+        free(buff);
         if (stream)
         {
             stream->u.mem.hkey = hStrKey;
@@ -1457,7 +1494,7 @@ static ULONG WINAPI threadref_Release(IUnknown *iface)
     TRACE("%p, refcount %ld.\n", threadref, refcount);
 
     if (!refcount)
-        heap_free(threadref);
+        free(threadref);
 
     return refcount;
 }
@@ -1483,7 +1520,7 @@ HRESULT WINAPI SHCreateThreadRef(LONG *refcount, IUnknown **out)
 
     *out = NULL;
 
-    threadref = heap_alloc(sizeof(*threadref));
+    threadref = malloc(sizeof(*threadref));
     if (!threadref)
         return E_OUTOFMEMORY;
     threadref->IUnknown_iface.lpVtbl = &threadrefvtbl;
@@ -1992,10 +2029,10 @@ DWORD WINAPI SHCopyKeyW(HKEY hkey_src, const WCHAR *subkey, HKEY hkey_dst, DWORD
             max_key_len = max(max_key_len, max_value_len);
 
             if (max_key_len++ > MAX_PATH - 1)
-                ptr_name = heap_alloc(max_key_len * sizeof(WCHAR));
+                ptr_name = malloc(max_key_len * sizeof(WCHAR));
 
             if (max_data_len > sizeof(buff))
-                ptr = heap_alloc(max_data_len);
+                ptr = malloc(max_data_len);
 
             if (!ptr_name || !ptr)
                 ret = ERROR_NOT_ENOUGH_MEMORY;
@@ -2039,9 +2076,9 @@ DWORD WINAPI SHCopyKeyW(HKEY hkey_src, const WCHAR *subkey, HKEY hkey_dst, DWORD
 
     /* Free buffers if allocated */
     if (ptr_name != name)
-        heap_free(ptr_name);
+        free(ptr_name);
     if (ptr != buff)
-        heap_free(ptr);
+        free(ptr);
 
     if (subkey && hkey_src)
         RegCloseKey(hkey_src);
@@ -2117,20 +2154,20 @@ DWORD WINAPI SHQueryValueExW(HKEY hkey, const WCHAR *name, DWORD *reserved, DWOR
         if (!buff || ret == ERROR_MORE_DATA)
         {
             length = data_len;
-            value = heap_alloc(length);
+            value = malloc(length);
             RegQueryValueExW(hkey, name, reserved, NULL, (BYTE *)value, &length);
             length = ExpandEnvironmentStringsW(value, NULL, 0);
         }
         else
         {
             length = (lstrlenW(buff) + 1) * sizeof(WCHAR);
-            value = heap_alloc(length);
+            value = malloc(length);
             memcpy(value, buff, length);
             length = ExpandEnvironmentStringsW(value, buff, *buff_len / sizeof(WCHAR));
             if (length > *buff_len) ret = ERROR_MORE_DATA;
         }
         data_len = max(data_len, length);
-        heap_free(value);
+        free(value);
     }
 
     if (type)
@@ -2165,20 +2202,20 @@ DWORD WINAPI SHQueryValueExA(HKEY hkey, const char *name, DWORD *reserved, DWORD
         if (!buff || ret == ERROR_MORE_DATA)
         {
             length = data_len;
-            value = heap_alloc(length);
+            value = malloc(length);
             RegQueryValueExA(hkey, name, reserved, NULL, (BYTE *)value, &length);
             length = ExpandEnvironmentStringsA(value, NULL, 0);
         }
         else
         {
             length = strlen(buff) + 1;
-            value = heap_alloc(length);
+            value = malloc(length);
             memcpy(value, buff, length);
             length = ExpandEnvironmentStringsA(value, buff, *buff_len);
             if (length > *buff_len) ret = ERROR_MORE_DATA;
         }
         data_len = max(data_len, length);
-        heap_free(value);
+        free(value);
     }
 
     if (type)
@@ -2519,4 +2556,22 @@ FEATURE_ENABLED_STATE WINAPI GetFeatureEnabledState(UINT32 feature, FEATURE_CHAN
 {
     FIXME("(%u, %u) stub\n", feature, change_time);
     return FEATURE_ENABLED_STATE_DEFAULT;
+}
+
+/*************************************************************************
+ * RegisterScaleChangeEvent        [SHCORE.@]
+ */
+HRESULT WINAPI RegisterScaleChangeEvent(HANDLE handle, DWORD_PTR *cookie)
+{
+    FIXME("(%p, %p) stub\n", handle, cookie);
+    return E_NOTIMPL;
+}
+
+/*************************************************************************
+ * CreateRandomAccessStreamOverStream        [SHCORE.@]
+ */
+HRESULT WINAPI CreateRandomAccessStreamOverStream(IStream *stream, BSOS_OPTIONS options, REFIID riid, void **ppv)
+{
+    FIXME("(%p, %d, %s, %p) stub\n", stream, options, debugstr_guid(riid), ppv);
+    return E_NOTIMPL;
 }

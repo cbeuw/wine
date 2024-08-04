@@ -19,6 +19,8 @@
  */
 
 #include "wined3d_private.h"
+#include "wined3d_gl.h"
+#include "wined3d_vk.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(d3d);
 
@@ -174,7 +176,7 @@ static struct wined3d_pipeline_statistics_query *wined3d_pipeline_statistics_que
 }
 
 enum wined3d_fence_result wined3d_fence_test(const struct wined3d_fence *fence,
-        struct wined3d_device *device, DWORD flags)
+        struct wined3d_device *device, uint32_t flags)
 {
     const struct wined3d_gl_info *gl_info;
     struct wined3d_context_gl *context_gl;
@@ -387,7 +389,7 @@ static HRESULT wined3d_fence_init(struct wined3d_fence *fence, const struct wine
 
 HRESULT wined3d_fence_create(struct wined3d_device *device, struct wined3d_fence **fence)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_fence *object;
     HRESULT hr;
 
@@ -410,7 +412,7 @@ HRESULT wined3d_fence_create(struct wined3d_device *device, struct wined3d_fence
 
 ULONG CDECL wined3d_query_incref(struct wined3d_query *query)
 {
-    ULONG refcount = InterlockedIncrement(&query->ref);
+    unsigned int refcount = InterlockedIncrement(&query->ref);
 
     TRACE("%p increasing refcount to %u.\n", query, refcount);
 
@@ -429,7 +431,7 @@ static void wined3d_query_destroy_object(void *object)
 
 ULONG CDECL wined3d_query_decref(struct wined3d_query *query)
 {
-    ULONG refcount = InterlockedDecrement(&query->ref);
+    unsigned int refcount = InterlockedDecrement(&query->ref);
 
     TRACE("%p decreasing refcount to %u.\n", query, refcount);
 
@@ -448,7 +450,7 @@ ULONG CDECL wined3d_query_decref(struct wined3d_query *query)
 }
 
 HRESULT CDECL wined3d_query_get_data(struct wined3d_query *query,
-        void *data, UINT data_size, DWORD flags)
+        void *data, UINT data_size, uint32_t flags)
 {
     TRACE("query %p, data %p, data_size %u, flags %#x.\n",
             query, data, data_size, flags);
@@ -493,7 +495,7 @@ UINT CDECL wined3d_query_get_data_size(const struct wined3d_query *query)
     return query->data_size;
 }
 
-HRESULT CDECL wined3d_query_issue(struct wined3d_query *query, DWORD flags)
+HRESULT CDECL wined3d_query_issue(struct wined3d_query *query, uint32_t flags)
 {
     TRACE("query %p, flags %#x.\n", query, flags);
 
@@ -502,7 +504,7 @@ HRESULT CDECL wined3d_query_issue(struct wined3d_query *query, DWORD flags)
     return WINED3D_OK;
 }
 
-static BOOL wined3d_occlusion_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_occlusion_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_occlusion_query *oq = wined3d_occlusion_query_from_query(query);
     const struct wined3d_gl_info *gl_info;
@@ -534,7 +536,7 @@ static BOOL wined3d_occlusion_query_ops_poll(struct wined3d_query *query, DWORD 
     return available;
 }
 
-static BOOL wined3d_event_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_event_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_event_query *event_query = wined3d_event_query_from_query(query);
     enum wined3d_fence_result ret;
@@ -579,7 +581,7 @@ enum wined3d_query_type CDECL wined3d_query_get_type(const struct wined3d_query 
     return query->type;
 }
 
-static BOOL wined3d_event_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_event_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     TRACE("query %p, flags %#x.\n", query, flags);
 
@@ -599,7 +601,7 @@ static BOOL wined3d_event_query_ops_issue(struct wined3d_query *query, DWORD fla
     return FALSE;
 }
 
-static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_occlusion_query *oq = wined3d_occlusion_query_from_query(query);
     struct wined3d_device *device = query->device;
@@ -672,7 +674,7 @@ static BOOL wined3d_occlusion_query_ops_issue(struct wined3d_query *query, DWORD
     return poll;
 }
 
-static BOOL wined3d_timestamp_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_timestamp_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_timestamp_query *tq = wined3d_timestamp_query_from_query(query);
     const struct wined3d_gl_info *gl_info;
@@ -707,7 +709,7 @@ static BOOL wined3d_timestamp_query_ops_poll(struct wined3d_query *query, DWORD 
     return available;
 }
 
-static BOOL wined3d_timestamp_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_timestamp_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_timestamp_query *tq = wined3d_timestamp_query_from_query(query);
     const struct wined3d_gl_info *gl_info;
@@ -736,21 +738,21 @@ static BOOL wined3d_timestamp_query_ops_issue(struct wined3d_query *query, DWORD
     return FALSE;
 }
 
-static BOOL wined3d_timestamp_disjoint_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_timestamp_disjoint_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     TRACE("query %p, flags %#x.\n", query, flags);
 
     return TRUE;
 }
 
-static BOOL wined3d_timestamp_disjoint_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_timestamp_disjoint_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     TRACE("query %p, flags %#x.\n", query, flags);
 
     return FALSE;
 }
 
-static BOOL wined3d_so_statistics_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_so_statistics_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_so_statistics_query *pq = wined3d_so_statistics_query_from_query(query);
     GLuint written_available, generated_available;
@@ -806,7 +808,7 @@ static void wined3d_so_statistics_query_end(struct wined3d_so_statistics_query *
     checkGLcall("end query");
 }
 
-static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_so_statistics_query *pq = wined3d_so_statistics_query_from_query(query);
     struct wined3d_device *device = query->device;
@@ -882,7 +884,7 @@ static BOOL wined3d_so_statistics_query_ops_issue(struct wined3d_query *query, D
     return poll;
 }
 
-static BOOL wined3d_pipeline_query_ops_poll(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_pipeline_query_ops_poll(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
     const struct wined3d_gl_info *gl_info;
@@ -946,7 +948,7 @@ static void wined3d_pipeline_statistics_query_end(struct wined3d_pipeline_statis
     checkGLcall("end query");
 }
 
-static BOOL wined3d_pipeline_query_ops_issue(struct wined3d_query *query, DWORD flags)
+static BOOL wined3d_pipeline_query_ops_issue(struct wined3d_query *query, uint32_t flags)
 {
     struct wined3d_pipeline_statistics_query *pq = wined3d_pipeline_statistics_query_from_query(query);
     struct wined3d_device *device = query->device;
@@ -1037,7 +1039,7 @@ static HRESULT wined3d_event_query_create(struct wined3d_device *device,
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_event_query *object;
     HRESULT hr;
 
@@ -1083,7 +1085,7 @@ static HRESULT wined3d_occlusion_query_create(struct wined3d_device *device,
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_occlusion_query *object;
 
     TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",
@@ -1127,7 +1129,7 @@ static HRESULT wined3d_timestamp_query_create(struct wined3d_device *device,
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_timestamp_query *object;
 
     TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",
@@ -1167,7 +1169,7 @@ static HRESULT wined3d_timestamp_disjoint_query_create(struct wined3d_device *de
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_query *object;
 
     TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",
@@ -1223,7 +1225,7 @@ static HRESULT wined3d_so_statistics_query_create(struct wined3d_device *device,
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_so_statistics_query *object;
     unsigned int stream_idx;
 
@@ -1280,7 +1282,7 @@ static HRESULT wined3d_pipeline_query_create(struct wined3d_device *device,
         enum wined3d_query_type type, void *parent, const struct wined3d_parent_ops *parent_ops,
         struct wined3d_query **query)
 {
-    const struct wined3d_gl_info *gl_info = &device->adapter->gl_info;
+    const struct wined3d_gl_info *gl_info = &wined3d_adapter_gl(device->adapter)->gl_info;
     struct wined3d_pipeline_statistics_query *object;
 
     TRACE("device %p, type %#x, parent %p, parent_ops %p, query %p.\n",

@@ -21,8 +21,6 @@
 #ifndef __D3DX11TEX_H__
 #define __D3DX11TEX_H__
 
-#include "wine/winheader_enter.h"
-
 typedef enum D3DX11_FILTER_FLAG
 {
     D3DX11_FILTER_NONE             = 0x00000001,
@@ -105,6 +103,36 @@ typedef struct D3DX11_IMAGE_LOAD_INFO
 #endif
 } D3DX11_IMAGE_LOAD_INFO;
 
+typedef struct _D3DX11_TEXTURE_LOAD_INFO
+{
+    D3D11_BOX *pSrcBox;
+    D3D11_BOX *pDstBox;
+    UINT SrcFirstMip;
+    UINT DstFirstMip;
+    UINT NumMips;
+    UINT SrcFirstElement;
+    UINT DstFirstElement;
+    UINT NumElements;
+    UINT Filter;
+    UINT MipFilter;
+
+#ifdef __cplusplus
+    _D3DX11_TEXTURE_LOAD_INFO()
+    {
+        pSrcBox         = NULL;
+        pDstBox         = NULL;
+        SrcFirstMip     = 0;
+        DstFirstMip     = 0;
+        NumMips         = D3DX11_DEFAULT;
+        SrcFirstElement = 0;
+        DstFirstElement = 0;
+        NumElements     = D3DX11_DEFAULT;
+        Filter          = D3DX11_DEFAULT;
+        MipFilter       = D3DX11_DEFAULT;
+    }
+#endif
+} D3DX11_TEXTURE_LOAD_INFO;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -127,6 +155,8 @@ HRESULT WINAPI D3DX11GetImageInfoFromFileW(const WCHAR *filename, ID3DX11ThreadP
         HRESULT *hresult);
 HRESULT WINAPI D3DX11GetImageInfoFromMemory(const void *src_data, SIZE_T src_data_size, ID3DX11ThreadPump *pump,
         D3DX11_IMAGE_INFO *img_info, HRESULT *hresult);
+HRESULT WINAPI D3DX11LoadTextureFromTexture(ID3D11DeviceContext *context, ID3D11Resource *src_texture,
+        D3DX11_TEXTURE_LOAD_INFO *info, ID3D11Resource *dst_texture);
 HRESULT WINAPI D3DX11SaveTextureToFileA(ID3D11DeviceContext *context, ID3D11Resource *texture,
         D3DX11_IMAGE_FILE_FORMAT format, const char *filename);
 HRESULT WINAPI D3DX11SaveTextureToFileW(ID3D11DeviceContext *context, ID3D11Resource *texture,
@@ -137,7 +167,5 @@ HRESULT WINAPI D3DX11SaveTextureToMemory(ID3D11DeviceContext *context, ID3D11Res
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif

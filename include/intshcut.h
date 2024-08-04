@@ -19,11 +19,13 @@
 #ifndef __WINE_INTSHCUT_H
 #define __WINE_INTSHCUT_H
 
-#include "wine/winheader_enter.h"
-
 #include <isguids.h>
 
+#ifdef _INTSHCUT_
 #define INTSHCUTAPI
+#else
+#define INTSHCUTAPI DECLSPEC_IMPORT
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -103,16 +105,13 @@ typedef enum translateurl_in_flags {
     TRANSLATEURL_FL_USE_DEFAULT_PROTOCOL
 } TRANSLATEURL_IN_FLAGS;
 
-HRESULT WINAPI TranslateURLA(LPCSTR, DWORD, LPSTR *);
-HRESULT WINAPI TranslateURLW(LPCWSTR, DWORD, LPWSTR *);
+INTSHCUTAPI HRESULT WINAPI TranslateURLA(LPCSTR, DWORD, LPSTR *);
+INTSHCUTAPI HRESULT WINAPI TranslateURLW(LPCWSTR, DWORD, LPWSTR *);
 #define TranslateURL WINELIB_NAME_AW(TranslateURL)
-
-BOOL    WINAPI InetIsOffline(DWORD);
+INTSHCUTAPI BOOL    WINAPI InetIsOffline(DWORD);
 
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif  /* __WINE_INTSHCUT_H */

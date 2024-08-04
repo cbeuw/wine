@@ -4717,7 +4717,7 @@ static void test_appsearch_reglocator(void)
     memset(&si, 0, sizeof(si));
     GetNativeSystemInfo(&si);
 
-    if (S(U(si)).wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+    if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
     {
         size = ExpandEnvironmentStringsA("%PATH%", NULL, 0);
         pathvar = malloc(size);
@@ -5066,6 +5066,7 @@ static void test_appsearch_inilocator(void)
     }
     ok(r == ERROR_SUCCESS, "Expected a valid package handle %u\n", r);
 
+    MsiCloseHandle( hdb );
     MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
 
     r = MsiDoActionA(hpkg, "AppSearch");
@@ -5074,6 +5075,12 @@ static void test_appsearch_inilocator(void)
     size = MAX_PATH;
     r = MsiGetPropertyA(hpkg, "SIGPROP1", prop, &size);
     ok(r == ERROR_SUCCESS, "Expected ERROR_SUCCESS, got %d\n", r);
+    if (!prop[0])
+    {
+        win_skip("broken result\n");
+        MsiCloseHandle(hpkg);
+        goto error;
+    }
     ok(!lstrcmpA(prop, "keydata"), "Expected \"keydata\", got \"%s\"\n", prop);
 
     size = MAX_PATH;
@@ -5576,7 +5583,7 @@ static void test_installprops(void)
     CHAR path[MAX_PATH], buf[MAX_PATH];
     DWORD size, type;
     LANGID langid;
-    HKEY hkey1, hkey2, pathkey;
+    HKEY hkey1, hkey2, pathkey = NULL;
     int res;
     UINT r;
     REGSAM access = KEY_ALL_ACCESS;
@@ -5628,7 +5635,12 @@ static void test_installprops(void)
     ok( !lstrcmpA(buf, path), "Expected %s, got %s\n", path, buf);
 
     RegOpenKeyA(HKEY_CURRENT_USER, "SOFTWARE\\Microsoft\\MS Setup (ACME)\\User Info", &hkey1);
-    RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, access, &hkey2);
+    res = RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, access, &hkey2);
+    if (res == ERROR_ACCESS_DENIED)
+    {
+        win_skip("no access\n");
+        goto done;
+    }
     RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows\\CurrentVersion",
         0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &pathkey);
 
@@ -5736,7 +5748,7 @@ static void test_installprops(void)
     sprintf(buf, "%d", LOBYTE(LOWORD(GetVersion())) * 100 + HIBYTE(LOWORD(GetVersion())));
     check_prop(hpkg, "VersionNT", buf, 1, 1);
 
-    if (S(U(si)).wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
+    if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64)
     {
         sprintf(buf, "%d", si.wProcessorLevel);
         check_prop(hpkg, "Intel", buf, 1, 0);
@@ -5773,7 +5785,7 @@ static void test_installprops(void)
         strcat(path, "\\");
         check_prop(hpkg, "CommonFiles64Folder", path, 0, 0);
     }
-    else if (S(U(si)).wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+    else if (si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
     {
         sprintf(buf, "%d", si.wProcessorLevel);
         check_prop(hpkg, "Intel", buf, 1, 0);
@@ -5800,6 +5812,7 @@ static void test_installprops(void)
         check_prop(hpkg, "CommonFiles64Dir", "", 0, 0);
     }
 
+done:
     CloseHandle(hkey1);
     CloseHandle(hkey2);
     RegCloseKey(pathkey);

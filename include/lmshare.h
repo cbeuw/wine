@@ -18,8 +18,6 @@
 #ifndef _LMSHARE_H
 #define _LMSHARE_H
 
-#include "wine/winheader_enter.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -76,6 +74,8 @@ NET_API_STATUS WINAPI NetShareSetInfo(LMSTR,LMSTR,DWORD,LPBYTE,LPDWORD);
 #define STYPE_IPC      3
 #define STYPE_SPECIAL  0x80000000
 
+#define SHI_USES_UNLIMITED (DWORD)(-1)
+
 NET_API_STATUS WINAPI NetSessionDel(LMSTR,LMSTR,LMSTR);
 NET_API_STATUS WINAPI NetSessionEnum(LMSTR,LMSTR,LMSTR,DWORD,LPBYTE*,DWORD,LPDWORD,LPDWORD,LPDWORD);
 NET_API_STATUS WINAPI NetSessionGetInfo(LMSTR,LMSTR,LMSTR,DWORD,LPBYTE*);
@@ -83,7 +83,5 @@ NET_API_STATUS WINAPI NetSessionGetInfo(LMSTR,LMSTR,LMSTR,DWORD,LPBYTE*);
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* ndef _LMSHARE_H */

@@ -23,22 +23,12 @@
 #ifndef __MMDDK_H
 #define __MMDDK_H
 
-#include "wine/winheader_enter.h"
-
 #include <mmsystem.h>
 #include <winbase.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define MAX_MIDIINDRV 	(16)
-/* For now I'm making 16 the maximum number of midi devices one can
- * have. This should be more than enough for everybody. But as a purist,
- * I intend to make it unbounded in the future, as soon as I figure
- * a good way to do so.
- */
-#define MAX_MIDIOUTDRV 	(16)
 
 /* ==================================
  *   Multimedia DDK compatible part
@@ -469,7 +459,5 @@ DWORD    WINAPI mmGetCurrentTask(VOID);
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* __MMDDK_H */

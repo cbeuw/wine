@@ -91,7 +91,7 @@ const char *debugstr_w(const WCHAR *wstr, size_t wchar_size);
 
 #define FIXME_ONCE VKD3D_DBG_LOG_ONCE(FIXME, WARN)
 
-#define VKD3D_DEBUG_ENV_NAME(name) const char *vkd3d_dbg_env_name = name
+#define VKD3D_DEBUG_ENV_NAME(name) const char *const vkd3d_dbg_env_name = name
 
 static inline const char *debugstr_guid(const GUID *guid)
 {
@@ -115,5 +115,6 @@ struct vkd3d_debug_option
 bool vkd3d_debug_list_has_member(const char *string, const char *member);
 uint64_t vkd3d_parse_debug_options(const char *string,
         const struct vkd3d_debug_option *options, unsigned int option_count);
+void vkd3d_set_thread_name(const char *name);
 
 #endif  /* __VKD3D_DEBUG_H */

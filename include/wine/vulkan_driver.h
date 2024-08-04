@@ -3,7 +3,7 @@
  * This file is generated from Vulkan vk.xml file covered
  * by the following copyright and permission notice:
  *
- * Copyright 2015-2022 The Khronos Group Inc.
+ * Copyright 2015-2023 The Khronos Group Inc.
  *
  * SPDX-License-Identifier: Apache-2.0 OR MIT
  *
@@ -13,7 +13,7 @@
 #define __WINE_VULKAN_DRIVER_H
 
 /* Wine internal vulkan driver version, needs to be bumped upon vulkan_funcs changes. */
-#define WINE_VULKAN_DRIVER_VERSION 10
+#define WINE_VULKAN_DRIVER_VERSION 11
 
 struct vulkan_funcs
 {
@@ -43,10 +43,8 @@ struct vulkan_funcs
     VkResult (*p_vkQueuePresentKHR)(VkQueue, const VkPresentInfoKHR *);
 
     /* winevulkan specific functions */
-    VkSurfaceKHR (*p_wine_get_native_surface)(VkSurfaceKHR);
+    VkSurfaceKHR (*p_wine_get_host_surface)(VkSurfaceKHR);
 };
-
-extern const struct vulkan_funcs * CDECL __wine_get_vulkan_driver(UINT version);
 
 static inline void *get_vulkan_driver_device_proc_addr(
         const struct vulkan_funcs *vulkan_funcs, const char *name)

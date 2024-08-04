@@ -19,8 +19,6 @@
 #ifndef __WINE_D3DX9ANIM_H
 #define __WINE_D3DX9ANIM_H
 
-#include "wine/winheader_enter.h"
-
 DEFINE_GUID(IID_ID3DXAnimationSet,           0x698cfb3f, 0x9289, 0x4d95, 0x9a, 0x57, 0x33, 0xa9, 0x4b, 0x5a, 0x65, 0xf9);
 DEFINE_GUID(IID_ID3DXKeyframedAnimationSet,  0xfa4e8e3a, 0x9786, 0x407d, 0x8b, 0x4c, 0x59, 0x95, 0x89, 0x37, 0x64, 0xaf);
 DEFINE_GUID(IID_ID3DXCompressedAnimationSet, 0x6cc2480d, 0x3808, 0x4739, 0x9f, 0x88, 0xde, 0x49, 0xfa, 0xcd, 0x8d, 0x4c);
@@ -185,23 +183,25 @@ DECLARE_INTERFACE(ID3DXAllocateHierarchy)
 #define INTERFACE ID3DXLoadUserData
 DECLARE_INTERFACE(ID3DXLoadUserData)
 {
-    STDMETHOD(LoadTopLevelData)(ID3DXFileData *child_data) PURE;
-    STDMETHOD(LoadFrameChildData)(D3DXFRAME *frame, ID3DXFileData *child_data) PURE;
-    STDMETHOD(LoadMeshChildData)(D3DXMESHCONTAINER *mesh_container, ID3DXFileData *child_data) PURE;
+    /* MS DirectX SDK headers define these methods without 'this' parameter. */
+    STDMETHOD(LoadTopLevelData)(THIS_ ID3DXFileData *child_data) PURE;
+    STDMETHOD(LoadFrameChildData)(THIS_ D3DXFRAME *frame, ID3DXFileData *child_data) PURE;
+    STDMETHOD(LoadMeshChildData)(THIS_ D3DXMESHCONTAINER *mesh_container, ID3DXFileData *child_data) PURE;
 };
 #undef INTERFACE
 
 #define INTERFACE ID3DXSaveUserData
 DECLARE_INTERFACE(ID3DXSaveUserData)
 {
-    STDMETHOD(AddFrameChildData)(const D3DXFRAME *frame,
+    /* MS DirectX SDK headers define these methods without 'this' parameter. */
+    STDMETHOD(AddFrameChildData)(THIS_ const D3DXFRAME *frame,
             ID3DXFileSaveObject *save_obj, ID3DXFileSaveData *frame_data) PURE;
-    STDMETHOD(AddMeshChildData)(const D3DXMESHCONTAINER *mesh_container,
+    STDMETHOD(AddMeshChildData)(THIS_ const D3DXMESHCONTAINER *mesh_container,
             ID3DXFileSaveObject *save_obj, ID3DXFileSaveData *mesh_data) PURE;
-    STDMETHOD(AddTopLevelDataObjectsPre)(ID3DXFileSaveObject *save_obj) PURE;
-    STDMETHOD(AddTopLevelDataObjectsPost)(ID3DXFileSaveObject *save_obj) PURE;
-    STDMETHOD(RegisterTemplates)(ID3DXFile *file) PURE;
-    STDMETHOD(SaveTemplates)(ID3DXFileSaveObject *save_obj) PURE;
+    STDMETHOD(AddTopLevelDataObjectsPre)(THIS_ ID3DXFileSaveObject *save_obj) PURE;
+    STDMETHOD(AddTopLevelDataObjectsPost)(THIS_ ID3DXFileSaveObject *save_obj) PURE;
+    STDMETHOD(RegisterTemplates)(THIS_ ID3DXFile *file) PURE;
+    STDMETHOD(SaveTemplates)(THIS_ ID3DXFileSaveObject *save_obj) PURE;
 };
 #undef INTERFACE
 
@@ -406,7 +406,5 @@ HRESULT WINAPI D3DXCreateAnimationController(UINT max_animation_output_count, UI
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* __WINE_D3DX9ANIM_H */

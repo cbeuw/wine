@@ -20,8 +20,6 @@
 #ifndef MAPIDEFS_H
 #define MAPIDEFS_H
 
-#include "wine/winheader_enter.h"
-
 #include <windows.h>
 #include <winerror.h>
 #include <objbase.h>
@@ -39,13 +37,8 @@ typedef union tagCY
 {
     struct
     {
-#ifdef WORDS_BIGENDIAN
-        LONG  Hi;
-        ULONG Lo;
-#else
         ULONG Lo;
         LONG  Hi;
-#endif
     } DUMMYSTRUCTNAME;
     LONGLONG int64;
 } CY;
@@ -57,13 +50,8 @@ typedef CY CURRENCY;
 #define _FILETIME_
 typedef struct _FILETIME
 {
-#ifdef WORDS_BIGENDIAN
-    DWORD dwHighDateTime;
-    DWORD dwLowDateTime;
-#else
     DWORD dwLowDateTime;
     DWORD dwHighDateTime;
-#endif
 } FILETIME, *PFILETIME, *LPFILETIME;
 #endif
 
@@ -1321,7 +1309,5 @@ DECLARE_INTERFACE_(IAttach,IMAPIProp)
 
 #define NO_ATTACHMENT        0x00000000U
 #define ATTACH_BY_VALUE      0x00000001U
-
-#include "wine/winheader_exit.h"
 
 #endif /*MAPIDEFS_H*/

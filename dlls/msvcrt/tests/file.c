@@ -226,7 +226,50 @@ static void test_fileops( void )
     ok(fread(buffer, sizeof(buffer), 1, file) == 0, "fread test failed\n");
     /* feof should be set now */
     ok(feof(file), "feof after fread failed\n");
-    fclose (file);
+    clearerr(file);
+    ok(!feof(file), "feof after clearerr failed\n");
+    fclose(file);
+
+    file = fopen("fdopen.tst", "rb");
+    ok( file != NULL, "fopen failed\n");
+    /* sizeof(buffer) > content of file */
+    ok(fread(buffer, sizeof(buffer), 1, file) == 0, "fread test failed\n");
+    /* feof should be set now */
+    ok(feof(file), "feof after fread failed\n");
+    rewind(file);
+    ok(!feof(file), "feof after rewind failed\n");
+    fclose(file);
+
+    file = fopen("fdopen.tst", "rb");
+    ok( file != NULL, "fopen failed\n");
+    /* sizeof(buffer) > content of file */
+    ok(fread(buffer, sizeof(buffer), 1, file) == 0, "fread test failed\n");
+    /* feof should be set now */
+    ok(feof(file), "feof after fread failed\n");
+    fseek(file, 0, SEEK_SET);
+    ok(!feof(file), "feof after fseek failed\n");
+    fclose(file);
+
+    file = fopen("fdopen.tst", "rb");
+    ok( file != NULL, "fopen failed\n");
+    /* sizeof(buffer) > content of file */
+    ok(fread(buffer, sizeof(buffer), 1, file) == 0, "fread test failed\n");
+    /* feof should be set now */
+    ok(feof(file), "feof after fread failed\n");
+    fgetpos(file, &pos);
+    fsetpos(file, &pos);
+    ok(!feof(file), "feof after fsetpos failed\n");
+    fclose(file);
+
+    file = fopen("fdopen.tst", "rb");
+    ok( file != NULL, "fopen failed\n");
+    /* sizeof(buffer) > content of file */
+    ok(fread(buffer, sizeof(buffer), 1, file) == 0, "fread test failed\n");
+    /* feof should be set now */
+    ok(feof(file), "feof after fread failed\n");
+    fsetpos(file, &pos);
+    ok(!feof(file), "feof after fsetpos failed\n");
+    fclose(file);
 
     unlink ("fdopen.tst");
 }
@@ -258,8 +301,21 @@ static void test_readmode( BOOL ascii_mode )
         write (fd, &padbuffer[i], 1);
     write (fd, nlbuffer, strlen(nlbuffer));
     write (fd, outbuffer, sizeof (outbuffer));
+
+    errno = 0xdeadbeef;
+    _doserrno = 0xdeadbeef;
+    ok(read(fd, buffer, 1) == -1, "read succeeded on write-only file\n");
+    ok(errno == EBADF, "errno = %d\n", errno);
+    ok(_doserrno == ERROR_ACCESS_DENIED, "doserrno = %ld\n", _doserrno);
+
     close (fd);
     
+    fd = open ("fdopen.tst", O_RDONLY, _S_IREAD |_S_IWRITE);
+    errno = 0xdeadbeef;
+    ok(dup2(fd, -1) == -1, "dup2(fd, -1) succeeded\n");
+    ok(errno == EBADF, "errno = %d\n", errno);
+    close (fd);
+
     if (ascii_mode) {
         /* Open file in ascii mode */
         fd = open ("fdopen.tst", O_RDONLY);
@@ -304,6 +360,12 @@ static void test_readmode( BOOL ascii_mode )
     ok(l == pl+fp,"line 2 ftell got %ld should be %d in %s\n", l, pl+fp, IOMODE);
     ok(lstrlenA(buffer) == 2+ao,"line 2 fgets got size %d should be %d in %s\n",
      lstrlenA(buffer), 2+ao, IOMODE);
+
+    errno = 0xdeadbeef;
+    _doserrno = 0xdeadbeef;
+    ok(write(fd, buffer, 1) == -1, "read succeeded on write-only file\n");
+    ok(errno == EBADF, "errno = %d\n", errno);
+    ok(_doserrno == ERROR_ACCESS_DENIED, "doserrno = %ld\n", _doserrno);
     
     /* test fread across buffer boundary */
     rewind(file);
@@ -1148,6 +1210,98 @@ static void test_fputwc(void)
     _unlink(tempfile);
 }
 
+static void test_freopen( void )
+{
+    char filename1[8] = "AXXXXXX";
+    char filename2[8] = "BXXXXXX";
+    FILE *file;
+    FILE *new;
+    int ret;
+    int fd;
+    char ch;
+    long pos;
+
+    mktemp(filename1);
+    mktemp(filename2);
+
+    file = fopen(filename1, "wt");
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    ret = fwrite("1", 1, 1, file);
+    ok(ret == 1, "fwrite() returned %d (%d)\n", ret, errno);
+    ret = fclose(file);
+    ok(ret == 0, "fclose() returned %d\n", ret);
+
+    file = fopen(filename2, "wt");
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    ret = fwrite("2", 1, 1, file);
+    ok(ret == 1, "fwrite() returned %d (%d)\n", ret, errno);
+    ret = fclose(file);
+    ok(ret == 0, "fclose() returned %d\n", ret);
+
+    file = fopen(filename1, "rt");
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    file = freopen(filename2, "rt", file);
+    ok(file != NULL, "fopen(filename2) returned NULL\n");
+    ch = '#';
+    ret = fread(&ch, 1, 1, file);
+    ok(ret == 1, "fread() returned %d\n", ret);
+    ok(ch == '2', "fread() read %c\n", ch);
+    ret = fclose(file);
+    ok(ret == 0, "fclose() returned %d\n", ret);
+
+    file = fopen(filename1, "at");
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    file = freopen(filename1, "rt", file);
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    pos = ftell(file);
+    ok(pos == 0, "ftell() returned %ld\n", pos);
+    ch = '#';
+    ret = fread(&ch, 1, 1, file);
+    ok(ret == 1, "fread() returned %d\n", ret);
+    ok(ch == '1', "fread() read %c\n", ch);
+    ret = fclose(file);
+    ok(ret == 0, "fclose() returned %d\n", ret);
+
+    file = fopen(filename1, "rt");
+    ok(file != NULL, "fopen(filename1) returned NULL\n");
+    fd = fileno(file);
+    ok(fd > 0, "fileno() returned %d\n", fd);
+    /* invalid filename */
+    new = freopen("_:", "rt", file);
+    ok(new == NULL, "fopen(_:) returned non NULL\n");
+    errno = 0xdeadbeef;
+    ch = '#';
+    ret = read(fd, &ch, 1);
+    ok(ret == -1, "read() returned %d\n", ret);
+    ok(errno == EBADF, "errno is %d\n", errno);
+    errno = 0xdeadbeef;
+    ret = fclose(file);
+    ok(ret == EOF, "fclose(file) succeeded\n");
+    ok(errno == 0xdeadbeef, "errno is %d\n", errno);
+
+    file = fopen(filename1, "rb");
+    ok(file != NULL, "couldn't open %s\n", filename1);
+    close(file->_file);
+    file->_file = -1;
+
+    new = freopen(filename2, "rb", file);
+    ok(new == file, "freopen() didn't return same FILE*\n");
+
+    fd = fileno(file);
+    ok(fd > 0, "fileno() returned %d\n", fd);
+
+    ch = '#';
+    ret = fread(&ch, 1, 1, file);
+    ok(ret == 1, "fread() returned %d\n", ret);
+    ok(ch == '2', "Unexpected char\n");
+
+    ret = fclose(file);
+    ok(ret == 0, "fclose(file) returned %d\n", ret);
+
+    unlink(filename1);
+    unlink(filename2);
+}
+
 static void test_ctrlz( void )
 {
   char* tempf;
@@ -1818,6 +1972,10 @@ static void test_invalid_stdin( const char* selfname )
     ret = RegOpenCurrentUser(KEY_READ, &key);
     ok(!ret, "RegOpenCurrentUser failed: %lx\n", ret);
 
+    ret = DuplicateHandle(GetCurrentProcess(), key, GetCurrentProcess(),
+            (HANDLE *)&key, GENERIC_READ, TRUE, DUPLICATE_CLOSE_SOURCE);
+    ok(ret, "DuplicateHandle failed: %lx\n", GetLastError());
+
     sa.nLength = sizeof(sa);
     sa.lpSecurityDescriptor = NULL;
     sa.bInheritHandle = TRUE;
@@ -1935,7 +2093,7 @@ static void test_fopen_fclose_fcloseall( void )
     ok(errno == 0xdeadbeef, "errno = %d\n", errno);
     ret = fclose(NULL);
     ok(ret == EOF, "Closing NULL file returned %d\n", ret);
-    ok(errno = EINVAL, "errno = %d\n", errno);
+    ok(errno == EINVAL, "errno = %d\n", errno);
 
     /* testing fcloseall() */
     numclosed = _fcloseall();
@@ -2958,6 +3116,7 @@ START_TEST(file)
     test_fgetwc_locale("AB\x83\xa9", "C", 0);
     test_fgetwc_unicode();
     test_fputwc();
+    test_freopen();
     test_ctrlz();
     test_file_put_get();
     test_tmpnam();

@@ -16,8 +16,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
-#include "wine/winheader_enter.h"
-
 #ifndef PID_FIRST_USABLE
 #define PID_FIRST_USABLE 2
 #endif
@@ -35,16 +33,16 @@
 #ifdef INITGUID
 #ifdef __cplusplus
 #define DEFINE_PROPERTYKEY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8, pid) \
-        EXTERN_C const PROPERTYKEY DECLSPEC_SELECTANY name DECLSPEC_HIDDEN = \
+        EXTERN_C const PROPERTYKEY DECLSPEC_SELECTANY name = \
         { { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }, pid }
 #else
 #define DEFINE_PROPERTYKEY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8, pid) \
-        const PROPERTYKEY DECLSPEC_SELECTANY name DECLSPEC_HIDDEN = \
+        const PROPERTYKEY DECLSPEC_SELECTANY name = \
         { { l, w1, w2, { b1, b2,  b3,  b4,  b5,  b6,  b7,  b8 } }, pid }
 #endif
 #else
 #define DEFINE_PROPERTYKEY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8, pid) \
-    EXTERN_C const PROPERTYKEY name DECLSPEC_HIDDEN
+    EXTERN_C const PROPERTYKEY name
 #endif
 
 #ifndef IsEqualPropertyKey
@@ -73,5 +71,3 @@ inline bool operator!=(REFPROPERTYKEY guidOne, REFPROPERTYKEY guidOther)
 }
 #endif
 #endif
-
-#include "wine/winheader_exit.h"

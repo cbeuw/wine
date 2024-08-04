@@ -16,7 +16,9 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA
  */
 
+var E_INVALIDARG = 0x80070057;
 var JS_E_PROP_DESC_MISMATCH = 0x800a01bd;
+var JS_E_INVALID_ACTION = 0x800a01bd;
 var JS_E_NUMBER_EXPECTED = 0x800a1389;
 var JS_E_FUNCTION_EXPECTED = 0x800a138a;
 var JS_E_DATE_EXPECTED = 0x800a138e;
@@ -25,17 +27,31 @@ var JS_E_BOOLEAN_EXPECTED = 0x800a1392;
 var JS_E_VBARRAY_EXPECTED = 0x800a1395;
 var JS_E_ENUMERATOR_EXPECTED = 0x800a1397;
 var JS_E_REGEXP_EXPECTED = 0x800a1398;
+var JS_E_UNEXPECTED_QUANTIFIER = 0x800a139a;
 var JS_E_INVALID_WRITABLE_PROP_DESC = 0x800a13ac;
 var JS_E_NONCONFIGURABLE_REDEFINED = 0x800a13d6;
 var JS_E_NONWRITABLE_MODIFIED = 0x800a13d7;
+var JS_E_WRONG_THIS = 0x800a13fc;
 
 var tests = [];
+
+sync_test("script vars", function() {
+    function foo() { }
+    foo.prototype.foo = 13;
+    var obj = new foo();
+    obj.Foo = 42;
+    obj.aBc = 1;
+    obj.abC = 2;
+    obj.Bar = 3;
+    document.body.foobar = 42;
+    external.testVars(document.body, obj);
+});
 
 sync_test("date_now", function() {
     var now = Date.now();
     var time = (new Date()).getTime();
 
-    ok(time >= now && time-now < 50, "unexpected Date.now() result " + now + " expected " + time);
+    ok(time >= now && time - now < 500, "unexpected Date.now() result " + now + " expected " + time);
 
     Date.now(1, 2, 3);
 });
@@ -68,6 +84,123 @@ sync_test("toISOString", function() {
     expect_exception(function() { new Date(31494784780800001).toISOString(); });
 });
 
+sync_test("Array toLocaleString", function() {
+    var r = Array.prototype.toLocaleString.length, old = Number.prototype.toLocaleString;
+    var s = external.listSeparator + ' ';
+    ok(r === 0, "length = " + r);
+
+    r = [5];
+    r.toLocaleString = function(a, b, c) { return a + " " + b + " " + c; };
+    Number.prototype.toLocaleString = function() { return "aBc"; };
+
+    r = [new Number(3), r, new Number(12)].toLocaleString("foo", "bar", "baz");
+    ok(r === "aBc"+s+"undefined undefined undefined"+s+"aBc", "toLocaleString returned " + r);
+
+    r = [3].toLocaleString();  /* primitive number value not affected */
+    if(external.isEnglish)
+        ok(r === "3.00", "[3].toLocaleString returned " + r);
+    else
+        ok(r !== "aBc", "[3].toLocaleString returned " + r);
+    Number.prototype.toLocaleString = old;
+
+    r = Object.create(null);
+    r.toString = function() { return "foo"; }
+    try {
+        Array.prototype.toLocaleString.call([r]);
+        ok(false, "expected exception calling it on array with object without toLocaleString");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_FUNCTION_EXPECTED, "called on array with object without toLocaleString threw " + n);
+    }
+
+    r = { length: 2 };
+    r[0] = { toLocaleString: function() { return "foo"; } }
+    r[1] = { toLocaleString: function() { return "bar"; } }
+    r = Array.prototype.toLocaleString.call(r);
+    ok(r === "foo"+s+"bar", "toLocaleString on array-like object returned " + r);
+
+    r = Array.prototype.toLocaleString.call({});
+    ok(r === "", "toLocaleString on {} returned " + r);
+
+    r = Array.prototype.toLocaleString.call("ab");
+    ok(r === "a"+s+"b", "toLocaleString on 'ab' returned " + r);
+
+    try {
+        Array.prototype.toLocaleString.call(undefined);
+        ok(false, "expected exception calling it on undefined");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_OBJECT_EXPECTED, "called on undefined threw " + n);
+    }
+    try {
+        Array.prototype.toLocaleString.call(null);
+        ok(false, "expected exception calling it on null");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_OBJECT_EXPECTED, "called on null threw " + n);
+    }
+    try {
+        Array.prototype.toLocaleString.call(external.nullDisp);
+        ok(false, "expected exception calling it on nullDisp");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_OBJECT_EXPECTED, "called on nullDisp threw " + n);
+    }
+});
+
+sync_test("Number toLocaleString", function() {
+    var r = Number.prototype.toLocaleString.length;
+    ok(r === 0, "length = " + r);
+    var tests = [
+        [ 0.0,          "0" ],
+        [ 1234.5,       "1,234.5" ],
+        [ -1337.7331,   "-1,337.733" ],
+        [ -0.0123,      "-0.012" ],
+        [-0.0198,       "-0.02" ],
+        [ 0.004,        "0.004" ],
+        [ 99.004,       "99.004" ],
+        [ 99.0004,      "99" ],
+        [ 65536.5,      "65,536.5" ],
+        [ NaN,          "NaN" ]
+    ];
+
+    if(external.isEnglish) {
+        /* Some recent Win8.1 updates have old jscript behavior */
+        if(Number.prototype.toLocaleString.call(0.0) === "0.00")
+            win_skip("skipping tests due to old behavior");
+        else
+            for(var i = 0; i < tests.length; i++) {
+                r = Number.prototype.toLocaleString.call(tests[i][0]);
+                ok(r === tests[i][1], "[" + i + "] got " + r);
+            }
+    }
+
+    try {
+        Number.prototype.toLocaleString.call("50");
+        ok(false, "expected exception calling it on string");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_WRONG_THIS || broken(n === JS_E_NUMBER_EXPECTED) /* newer Win8.1 */,
+           "called on string threw " + n);
+    }
+    try {
+        Number.prototype.toLocaleString.call(undefined);
+        ok(false, "expected exception calling it on undefined");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_WRONG_THIS || broken(n === JS_E_NUMBER_EXPECTED) /* newer Win8.1 */,
+           "called on undefined threw " + n);
+    }
+    try {
+        Number.prototype.toLocaleString.call(external.nullDisp);
+        ok(false, "expected exception calling it on nullDisp");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_WRONG_THIS || broken(n === JS_E_NUMBER_EXPECTED) /* newer Win8.1 */,
+           "called on nullDisp threw " + n);
+    }
+});
+
 sync_test("indexOf", function() {
     function expect(array, args, exr) {
         var r = Array.prototype.indexOf.apply(array, args);
@@ -92,6 +225,102 @@ sync_test("indexOf", function() {
     expect({"4": 4, length: 3}, [4], -1);
     expect({"test": true}, [true], -1);
     expect([1,2,3], [2, 1.9], 1);
+});
+
+sync_test("lastIndexOf", function() {
+    function expect(array, args, exr) {
+        var r = Array.prototype.lastIndexOf.apply(array, args);
+        ok(r == exr, "lastIndexOf returned " + r + " expected " + exr);
+    }
+
+    ok(Array.prototype.lastIndexOf.length == 1, "lastIndexOf.length = " + Array.prototype.lastIndexOf.length);
+
+    expect([1,2,3], [2], 1);
+    expect([1,undefined,3], [undefined], 1);
+    expect([1,undefined,3], [], 1);
+    expect([1,,3], [undefined], -1);
+    expect([1,undefined,undefined], [undefined], 2);
+    expect([1,2,3,2,5,6], [2, 2], 1);
+    expect([1,2,3,2,5,6], [2], 3);
+    expect([1,2,3,2,5,6], [2, -3], 3);
+    expect([1,2,3,2,5,6], [2, -4], 1);
+    expect([1,2,3,2,5,6], [1, -100], -1);
+    expect([1,2,3,2,5,6], [2, 100], 3);
+    expect("abcba", ["b"], 3);
+    expect(true, [true], -1);
+    expect({"4": 4, length: 5}, [4], 4);
+    expect({"4": 4, length: 5}, [undefined], -1);
+    expect({"4": 4, length: 3}, [4], -1);
+    expect({"test": true}, [true], -1);
+    expect([1,2,3], [2, 1.9], 1);
+    expect([1,2,3], [2, 0.9], -1);
+});
+
+sync_test("filter", function() {
+    ok(Array.prototype.filter.length === 1, "filter.length = " + Array.prototype.filter.length);
+
+    var arr = ["a","foobar",true,"b",42,0,Math,null,undefined,[1,2,3,"4"]];
+    delete arr[1];
+
+    function test(expect, fn, expect_this) {
+        var mismatch = false, r = function(v, i, a) {
+            ok(a === arr, "unexpected array " + arr);
+            ok(v === arr[i], "value = " + v + ", expected " + arr[i]);
+            ok(this === (expect_this ? expect_this : window), "this = " + this + ", expected " + expect_this);
+            return fn(v);
+        };
+        r = expect_this ? Array.prototype.filter.call(arr, r, expect_this) : Array.prototype.filter.call(arr, r);
+        ok(r.length === expect.length, "filtered array length = " + r.length + ", expected " + expect.length);
+        for(var i = 0; i < r.length; i++)
+            if(r[i] !== expect[i])
+                mismatch = true;
+        ok(!mismatch, "filtered array = " + r + ", expected " + expect);
+    }
+
+    test([], function(v) { return false; });
+    test(["a",true,"b",42,0,Math,null,undefined,arr[9]], function(v) { if(arr[1] === "foobar") delete arr[1]; return true; });
+    test(["a","b"], function(v) { if(v === "b") delete arr[0]; return typeof v === "string"; });
+    test(["b"], function(v) { if(arr[arr.length - 1] !== "c") arr.push("c"); return typeof v === "string"; });
+    test([true,"b",42,Math,arr[9],"c"], function(v) { return v; }, Object);
+
+    [0].filter(function() { ok(this.valueOf() === "wine", "this.valueOf() = " + this.valueOf()); return true; }, "wine");
+});
+
+sync_test("every & some", function() {
+    ok(Array.prototype.every.length === 1, "every.length = " + Array.prototype.every.length);
+    ok(Array.prototype.some.length === 1, "some.length = " + Array.prototype.some.length);
+    var arr = ["foobar"];
+
+    function test(expect_every, expect_some, fn, expect_this) {
+        var cb = function(v, i, a) {
+            ok(a === arr, "unexpected array " + arr);
+            ok(v === arr[i], "value = " + v + ", expected " + arr[i]);
+            ok(this === (expect_this ? expect_this : window), "this = " + this + ", expected " + expect_this);
+            return fn(v);
+        };
+        r = expect_this ? Array.prototype.every.call(arr, cb, expect_this) : Array.prototype.every.call(arr, cb);
+        ok(r === expect_every, "'every' = " + r);
+        r = expect_this ? Array.prototype.some.call(arr, cb, expect_this) : Array.prototype.some.call(arr, cb);
+        ok(r === expect_some, "'some' = " + r);
+    }
+
+    delete arr[0];
+    test(true, false, function(v) { return false; });
+    test(true, false, function(v) { return true; });
+
+    arr = [1,"2",3];
+    test(true, true, function(v) { return true; });
+    test(true, true, function(v) { if(arr[1] === "2") delete arr[1]; return typeof v === "number"; });
+    test(true, true, function(v) { if(arr[arr.length - 1] !== "a") arr.push("a"); return typeof v === "number"; }, Object);
+    test(false, true, function(v) { return typeof v === "number"; }, Object);
+
+    arr = [0,null,undefined,false];
+    test(false, false, function(v) { return v; });
+    arr.push(1);
+    test(false, true, function(v) { return v; });
+
+    [0].every(function() { ok(this.valueOf() === 42, "this.valueOf() = " + this.valueOf()); return true; }, 42);
+    [0].some(function() { ok(this.valueOf() === 137, "this.valueOf() = " + this.valueOf()); return false; }, 137);
 });
 
 sync_test("forEach", function() {
@@ -125,6 +354,8 @@ sync_test("forEach", function() {
         ok(array === a, "array != a");
         ok(this === o, "this != o");
     }, o);
+
+    a.forEach(function() { ok(this.valueOf() === "foobar", "this.valueOf() = " + this.valueOf()); }, "foobar");
 });
 
 sync_test("isArray", function() {
@@ -141,6 +372,13 @@ sync_test("isArray", function() {
     function C() {}
     C.prototype = Array.prototype;
     expect_array(new C(), false);
+});
+
+sync_test("array_splice", function() {
+    var arr = [1,2,3,4,5]
+    var tmp = arr.splice(2);
+    ok(arr.toString() === "1,2", "arr = " + arr);
+    ok(tmp.toString() === "3,4,5", "tmp = " + tmp);
 });
 
 sync_test("array_map", function() {
@@ -190,6 +428,16 @@ sync_test("array_map", function() {
     [1,2].map(function() {
         ok(this === window, "this != window");
     }, undefined);
+    [1,2].map(function() {
+        ok(this.valueOf() === 137, "this.valueOf() = " + this.valueOf());
+    }, 137);
+
+    r = [1,,2,].map(function(x) { return "" + x; });
+    ok(r.length === 3, "[1,,2,].map length = " + r.length);
+    ok(r[0] === "1", "[1,,2,].map[0] = " + r[0]);
+    ok(r[2] === "2", "[1,,2,].map[2] = " + r[2]);
+    ok(!("1" in r), "[1,,2,].map[1] exists");
+    ok(!("3" in r), "[1,,2,].map[3] exists");
 });
 
 sync_test("array_sort", function() {
@@ -292,11 +540,16 @@ sync_test("getOwnPropertyDescriptor", function() {
     (function() {
         test_own_data_prop_desc(arguments, "length", true, false, true);
         test_own_data_prop_desc(arguments, "callee", true, false, true);
+        ok(!("caller" in arguments), "caller in arguments");
     })();
 
     test_own_data_prop_desc(String, "prototype", false, false, false);
     test_own_data_prop_desc(function(){}, "prototype", true, false, false);
+    test_own_data_prop_desc(function(){}, "caller", false, false, false);
+    test_own_data_prop_desc(function(){}, "arguments", false, false, false);
     test_own_data_prop_desc(Function, "prototype", false, false, false);
+    test_own_data_prop_desc(Function.prototype, "caller", false, false, false);
+    test_own_data_prop_desc(Function.prototype, "arguments", false, false, false);
     test_own_data_prop_desc(String.prototype, "constructor", true, false, true);
 
     try {
@@ -555,6 +808,7 @@ sync_test("defineProperty", function() {
     /* call prop with getter */
     desc = {
         get: function() {
+            ok(this === obj, "this != obj");
             return function(x) {
                 ok(x === 100, "x = " + x);
                 return 10;
@@ -564,6 +818,10 @@ sync_test("defineProperty", function() {
     Object.defineProperty(obj, "funcprop", desc);
     test_accessor_prop_desc(obj, "funcprop", desc);
     ok(obj.funcprop(100) === 10, "obj.funcprop() = " + obj.funcprop(100));
+
+    Object.defineProperty(child.prototype, "funcprop_prot", desc);
+    test_accessor_prop_desc(child.prototype, "funcprop_prot", desc);
+    ok(obj.funcprop_prot(100) === 10, "obj.funcprop_prot() = " + obj.funcprop_prot(100));
 
     expect_exception(function() {
         Object.defineProperty(null, "funcprop", desc);
@@ -888,6 +1146,9 @@ sync_test("toString", function() {
     obj = Object.create(Number.prototype);
     tmp = Object.prototype.toString.call(obj);
     ok(tmp === "[object Object]", "toString.call(Object.create(Number.prototype)) = " + tmp);
+
+    tmp = (new Number(303)).toString(undefined);
+    ok(tmp === "303", "Number 303 toString(undefined) = " + tmp);
 });
 
 sync_test("bind", function() {
@@ -902,6 +1163,21 @@ sync_test("bind", function() {
     ok(f.length === 0, "f.length = " + f.length);
     r = f.call(o2);
     ok(r === 1, "r = " + r);
+
+    try {
+        f.arguments;
+        ok(false, "expected exception getting f.arguments");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_INVALID_ACTION, "f.arguments threw " + n);
+    }
+    try {
+        f.caller;
+        ok(false, "expected exception getting f.caller");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_INVALID_ACTION, "f.caller threw " + n);
+    }
 
     f = (function() {
         ok(this === o, "this != o");
@@ -966,6 +1242,23 @@ sync_test("bind", function() {
     ok(t != a, "t == a");
 
     ok(Function.prototype.bind.length === 1, "Function.prototype.bind.length = " + Function.prototype.bind.length);
+
+    ((function() { ok(this === window, "bind() this = " + this); }).bind())();
+    ((function() { ok(this === window, "bind(undefined) = " + this); }).bind(undefined))();
+    ((function() { ok(this === window, "bind(nullDisp) = " + this); }).bind(external.nullDisp))();
+    ((function() {
+        ok(typeof(this) === "object", "bind(42) typeof(this) = " + typeof(this));
+        ok(this.valueOf() === 42, "bind(42) this = " + this);
+    }).bind(42))();
+
+    r = (Object.prototype.toString.bind())();
+    ok(r === "[object Undefined]", "toString.bind() returned " + r);
+    r = (Object.prototype.toString.bind(undefined))();
+    ok(r === "[object Undefined]", "toString.bind(undefined) returned " + r);
+    r = (Object.prototype.toString.bind(null))();
+    ok(r === "[object Null]", "toString.bind(null) returned " + r);
+    r = (Object.prototype.toString.bind(external.nullDisp))();
+    ok(r === "[object Null]", "toString.bind(nullDisp) returned " + r);
 });
 
 sync_test("keys", function() {
@@ -1042,6 +1335,9 @@ sync_test("reduce", function() {
 
     r = [1,2,3].reduce(function(a, value) { return a + value; }, "str");
     ok(r === "str123", "reduce() returned " + r);
+
+    r = [1,2,].reduce(function(a, value) { return a + value; }, "str");
+    ok(r === "str12", "reduce() returned " + r);
 
     array = [1,2,3];
     r = array.reduce(function(a, value, index, src) {
@@ -1361,6 +1657,30 @@ sync_test("isFrozen", function() {
     }
 });
 
+sync_test("RegExp", function() {
+    var r;
+
+    r = /()/.exec("")[1];
+    ok(r === "", "/()/ captured: " + r);
+    r = /()?/.exec("")[1];
+    ok(r === undefined, "/()?/ captured: " + r);
+    r = /()??/.exec("")[1];
+    ok(r === undefined, "/()??/ captured: " + r);
+    r = /()*/.exec("")[1];
+    ok(r === undefined, "/()*/ captured: " + r);
+    r = /()??()/.exec("");
+    ok(r[1] === undefined, "/()??()/ [1] captured: " + r);
+    ok(r[2] === "", "/()??()/ [2] captured: " + r);
+
+    try {
+        r = new RegExp("(?<a>b)", "g");
+        ok(false, "expected exception with /(?<a>b)/ regex");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_UNEXPECTED_QUANTIFIER, "/(?<a>b)/ regex threw " + n);
+    }
+});
+
 sync_test("builtin_context", function() {
     var nullDisp = external.nullDisp;
     var tests = [
@@ -1417,6 +1737,23 @@ sync_test("builtin_context", function() {
     ok(obj === window, "obj = " + obj);
     obj = (function() { return this; }).call(42);
     ok(obj.valueOf() === 42, "obj = " + obj);
+
+    obj = Object.create([100]);
+    ok(obj.length === 1, "obj.length = " + obj.length);
+});
+
+sync_test("host this", function() {
+    var tests = [ undefined, null, external.nullDisp, function() {}, [0], "foobar", true, 42, new Number(42), external.testHostContext(true), window, document ];
+    var i, obj = Object.create(Function.prototype);
+
+    // only pure js objects are passed as 'this' (regardless of prototype)
+    [137].forEach(external.testHostContext(true), obj);
+    Function.prototype.apply.call(external.testHostContext(true), obj, [137, 0, {}]);
+
+    for(i = 0; i < tests.length; i++) {
+        [137].forEach(external.testHostContext(false), tests[i]);
+        Function.prototype.apply.call(external.testHostContext(false), tests[i], [137, 0, {}]);
+    }
 });
 
 sync_test("head_setter", function() {
@@ -1580,6 +1917,28 @@ sync_test("let scope instances", function() {
         ok(a[i]() == i, "a[" + i + "]() = " + a[i]());
 
     ok(f() == 2, "f() = " + f());
+});
+
+sync_test("substituted this", function() {
+    try {
+        ((function() { var f = Number.prototype.toString; return (function() { return f(); }); })())();
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === JS_E_NUMBER_EXPECTED, "Number.toString threw " + n);
+    }
+
+    var r = ((function() { var f = Object.prototype.toString; return (function() { return f(); }); })())();
+    ok(r === "[object Undefined]", "detached scope Object.toString returned " + r);
+
+    var r = (function() { this.f = Object.prototype.toString; return this.f(); })();
+    todo_wine.
+    ok(r === "[object Window]", "Object.toString returned " + r);
+
+    var r = (function() { var f = Object.prototype.toString; return f(); })();
+    ok(r === "[object Undefined]", "Object.toString returned " + r);
+
+    var r = ((function() { return (function() { return this; }); })())();
+    ok(r === window, "detached scope this = " + r);
 });
 
 sync_test("functions scope", function() {
@@ -1784,4 +2143,109 @@ sync_test("console", function() {
         except = true;
     }
     ok(except, "console.timeLog: expected exception");
+});
+
+async_test("matchMedia", function() {
+    var i, r, mql, expect, event_fired, event2_fired;
+
+    try {
+        mql = window.matchMedia("");
+    }catch(ex) {
+        var n = ex.number >>> 0;
+        ok(n === E_INVALIDARG, "matchMedia('') threw " + n);
+    }
+    r = [
+        [ undefined, "unknown" ],
+        [ null,      "unknown" ],
+        [ 42,        "not all" ],
+        [{ toString: function() { return "(max-width: 0px)"; }}, "all and (max-width:0px)" ]
+    ];
+    for(i = 0; i < r.length; i++) {
+        mql = window.matchMedia(r[i][0]);
+        todo_wine_if(r[i][0] !== 42).
+        ok(mql.media === r[i][1], r[i][0] + " media = " + mql.media);
+        ok(mql.matches === false, r[i][0] + " matches");
+    }
+    mql = window.matchMedia("(max-width: 1000px)");
+    ok(mql.matches === true, "(max-width: 1000px) does not match");
+    mql = window.matchMedia("(max-width: 50px)");
+    ok(mql.matches === false, "(max-width: 50px) matches");
+
+    ok(!("addEventListener" in mql), "addEventListener in MediaQueryList");
+    ok(!("removeEventListener" in mql), "removeEventListener in MediaQueryList");
+    r = mql.addListener(null);
+    ok(r === undefined, "addListener with null returned " + r);
+    r = mql.removeListener(null);
+    ok(r === undefined, "removeListener with null returned " + r);
+    r = mql.addListener("function() { ok(false, 'string handler called'); }");
+    ok(r === undefined, "addListener with string returned " + r);
+
+    var handler = function(e) {
+        ok(this === window, "handler this = " + this);
+        ok(e === mql, "handler argument = " + e);
+        event_fired = true;
+        ok(event2_fired !== true, "second handler fired before first");
+    }
+    var handler2 = function(e) {
+        ok(this === window, "handler2 this = " + this);
+        ok(e === mql, "handler2 argument = " + e);
+        event2_fired = true;
+    }
+    var tests = [
+        [ 20, 20, function() {
+            var r = mql.removeListener("function() { ok(false, 'string handler called'); }");
+            ok(r === undefined, "removeListener with string returned " + r);
+            r = mql.addListener(handler);
+            ok(r === undefined, "addListener with function returned " + r);
+        }],
+        [ 120, 120, function() {
+            ok(event_fired === true, "event not fired after changing from 20x20 to 120x120 view");
+            mql.addListener(null);
+            mql.addListener("function() { ok(false, 'second string handler called'); }");
+            mql.addListener(handler2);
+        }],
+        [ 30, 30, function() {
+            ok(event_fired === true, "event not fired after changing from 120x120 to 30x30 view");
+            ok(event2_fired === true, "event not fired from second handler after changing from 120x120 to 30x30 view");
+            var r = mql.removeListener(handler);
+            ok(r === undefined, "removeListener with function returned " + r);
+        }],
+        [ 300, 300, function() {
+            ok(event_fired === false, "removed event handler fired after changing from 30x30 to 300x300 view");
+            ok(event2_fired === true, "event not fired from second handler after changing from 30x30 to 300x300 view");
+        }]
+    ];
+
+    function test() {
+        tests[i][2]();
+        if(++i >= tests.length) {
+            next_test();
+            return;
+        }
+        expect = !expect;
+        event_fired = event2_fired = false;
+        external.setViewSize(tests[i][0], tests[i][1]);
+        window.setTimeout(check);
+    }
+
+    // async dispatch once even after change confirmed, to ensure that any possible listeners are dispatched first (or not)
+    function check() { window.setTimeout(mql.matches === expect ? test : check); }
+
+    i = 0;
+    expect = !mql.matches;
+    external.setViewSize(tests[i][0], tests[i][1]);
+    window.setTimeout(check);
+});
+
+sync_test("initProgressEvent", function() {
+    var e = document.createEvent("ProgressEvent");
+    e.initProgressEvent("loadend", false, false, true, 13, 42);
+    ok(e.lengthComputable === true, "lengthComputable = " + e.lengthComputable);
+    ok(e.loaded === 13, "loaded = " + e.loaded);
+    ok(e.total === 42, "total = " + e.total);
+
+    e.initProgressEvent("loadstart", false, false, false, 99, 50);
+    ok(e.lengthComputable === false, "lengthComputable after re-init = " + e.lengthComputable);
+    ok(e.loaded === 99, "loaded after re-init = " + e.loaded);
+    ok(e.total === 50, "total after re-init = " + e.total);
 });

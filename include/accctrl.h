@@ -19,8 +19,6 @@
 #ifndef __WINE_ACCCTRL_H
 #define __WINE_ACCCTRL_H
 
-#include "wine/winheader_enter.h"
-
 #include <wtypes.h>
 
 #ifdef __cplusplus
@@ -41,7 +39,8 @@ typedef enum _SE_OBJECT_TYPE
     SE_DS_OBJECT_ALL,
     SE_PROVIDER_DEFINED_OBJECT,
     SE_WMIGUID_OBJECT,
-    SE_REGISTRY_WOW64_32KEY
+    SE_REGISTRY_WOW64_32KEY,
+    SE_REGISTRY_WOW64_64KEY,
 } SE_OBJECT_TYPE;
 
 typedef enum _TRUSTEE_TYPE
@@ -449,7 +448,5 @@ DECL_WINELIB_TYPE_AW(PINHERITED_FROM)
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif /* __WINE_ACCCTRL_H */

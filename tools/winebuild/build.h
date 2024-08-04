@@ -23,10 +23,6 @@
 #ifndef __WINE_BUILD_H
 #define __WINE_BUILD_H
 
-#ifndef __WINE_CONFIG_H
-# error You must include config.h to use this header
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 #include "../tools.h"
@@ -155,7 +151,6 @@ typedef struct
     int              subsystem;          /* subsystem id */
     int              subsystem_major;    /* subsystem version major number */
     int              subsystem_minor;    /* subsystem version minor number */
-    int              syscall_table;      /* syscall table id */
     int              unicode_app;        /* default to unicode entry point */
     ORDDEF          *entry_points;       /* dll entry points */
     ORDDEF         **names;              /* array of entry point names (points into entry_points) */
@@ -170,14 +165,6 @@ extern struct target target;
 static inline unsigned int get_ptr_size(void)
 {
     return get_target_ptr_size( target );
-}
-
-/* return the size of a pointer on the target CPU */
-static inline unsigned int get_host_ptr_size(void)
-{
-    if (target.cpu == CPU_x86_32on64)
-        return 8;
-    return get_ptr_size();
 }
 
 static inline int is_pe(void)
@@ -204,7 +191,7 @@ static inline int is_pe(void)
 
 #define FLAG_CPU(cpu)  (0x10000 << (cpu))
 #define FLAG_CPU_MASK  (FLAG_CPU_WIN32 | FLAG_CPU_WIN64)
-#define FLAG_CPU_WIN64 (FLAG_CPU(CPU_x86_64) | FLAG_CPU(CPU_ARM64))
+#define FLAG_CPU_WIN64 (FLAG_CPU(CPU_x86_64) | FLAG_CPU(CPU_ARM64) | FLAG_CPU(CPU_ARM64EC))
 #define FLAG_CPU_WIN32 (FLAG_CPU(CPU_i386) | FLAG_CPU(CPU_ARM))
 
 #define MAX_ORDINALS  65535
@@ -228,8 +215,18 @@ static inline int is_pe(void)
 #define IMAGE_FILE_UP_SYSTEM_ONLY	   0x4000
 #define IMAGE_FILE_BYTES_REVERSED_HI	   0x8000
 
-#define IMAGE_DLLCHARACTERISTICS_PREFER_NATIVE 0x0010 /* Wine extension */
-#define IMAGE_DLLCHARACTERISTICS_NX_COMPAT     0x0100
+#define IMAGE_DLLCHARACTERISTICS_PREFER_NATIVE         0x0010 /* Wine extension */
+#define IMAGE_DLLCHARACTERISTICS_HIGH_ENTROPY_VA       0x0020
+#define IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE          0x0040
+#define IMAGE_DLLCHARACTERISTICS_FORCE_INTEGRITY       0x0080
+#define IMAGE_DLLCHARACTERISTICS_NX_COMPAT             0x0100
+#define IMAGE_DLLCHARACTERISTICS_NO_ISOLATION          0x0200
+#define IMAGE_DLLCHARACTERISTICS_NO_SEH                0x0400
+#define IMAGE_DLLCHARACTERISTICS_NO_BIND               0x0800
+#define IMAGE_DLLCHARACTERISTICS_APPCONTAINER          0x1000
+#define IMAGE_DLLCHARACTERISTICS_WDM_DRIVER            0x2000
+#define IMAGE_DLLCHARACTERISTICS_GUARD_CF              0x4000
+#define IMAGE_DLLCHARACTERISTICS_TERMINAL_SERVER_AWARE 0x8000
 
 #define	IMAGE_SUBSYSTEM_NATIVE      1
 #define	IMAGE_SUBSYSTEM_WINDOWS_GUI 2
@@ -258,16 +255,18 @@ extern int output( const char *format, ... )
    __attribute__ ((__format__ (__printf__, 1, 2)));
 extern void output_cfi( const char *format, ... )
    __attribute__ ((__format__ (__printf__, 1, 2)));
+extern void output_seh( const char *format, ... )
+   __attribute__ ((__format__ (__printf__, 1, 2)));
 extern void output_rva( const char *format, ... )
    __attribute__ ((__format__ (__printf__, 1, 2)));
+extern void output_thunk_rva( int ordinal, const char *format, ... )
+   __attribute__ ((__format__ (__printf__, 2, 3)));
 extern void spawn( struct strarray array );
 extern struct strarray find_tool( const char *name, const char * const *names );
 extern struct strarray find_link_tool(void);
 extern struct strarray get_as_command(void);
 extern struct strarray get_ld_command(void);
 extern const char *get_nm_command(void);
-extern void cleanup_tmp_files(void);
-extern char *get_temp_file_name( const char *prefix, const char *suffix );
 extern void output_standard_file_header(void);
 extern FILE *open_input_file( const char *srcdir, const char *name );
 extern void close_input_file( FILE *file );
@@ -281,17 +280,15 @@ extern DLLSPEC *alloc_dll_spec(void);
 extern void free_dll_spec( DLLSPEC *spec );
 extern char *make_c_identifier( const char *str );
 extern const char *get_stub_name( const ORDDEF *odp, const DLLSPEC *spec );
+extern const char *get_abi_name( const ORDDEF *odp, const char *name );
 extern const char *get_link_name( const ORDDEF *odp );
 extern int sort_func_list( ORDDEF **list, int count, int (*compare)(const void *, const void *) );
-extern unsigned int get_alignment(unsigned int align);
 extern unsigned int get_page_size(void);
 extern unsigned int get_args_size( const ORDDEF *odp );
 extern const char *asm_name( const char *func );
-extern const char *thunk32_name( const char *func );
-extern const char *func_declaration( const char *func );
+extern const char *arm64_name( const char *func );
 extern const char *asm_globl( const char *func );
 extern const char *get_asm_ptr_keyword(void);
-extern const char *get_asm_host_ptr_keyword(void);
 extern const char *get_asm_string_keyword(void);
 extern const char *get_asm_export_section(void);
 extern const char *get_asm_rodata_section(void);
@@ -299,6 +296,7 @@ extern const char *get_asm_rsrc_section(void);
 extern const char *get_asm_string_section(void);
 extern const char *arm64_page( const char *sym );
 extern const char *arm64_pageoff( const char *sym );
+extern void output_function_header( const char *func, int global );
 extern void output_function_size( const char *name );
 extern void output_gnu_stack_note(void);
 
@@ -310,12 +308,13 @@ extern void read_undef_symbols( DLLSPEC *spec, struct strarray files );
 extern void resolve_imports( DLLSPEC *spec );
 extern int is_undefined( const char *name );
 extern int has_imports(void);
+extern int has_delay_imports(void);
 extern void output_get_pc_thunk(void);
 extern void output_module( DLLSPEC *spec );
 extern void output_stubs( DLLSPEC *spec );
-extern void output_syscalls( DLLSPEC *spec );
 extern void output_imports( DLLSPEC *spec );
-extern void output_static_lib( DLLSPEC *spec, struct strarray files );
+extern void output_import_lib( DLLSPEC *spec, struct strarray files );
+extern void output_static_lib( const char *output_name, struct strarray files, int create );
 extern void output_exports( DLLSPEC *spec );
 extern int load_res32_file( const char *name, DLLSPEC *spec );
 extern void output_resources( DLLSPEC *spec );
@@ -366,8 +365,8 @@ extern int verbose;
 extern int link_ext_symbols;
 extern int force_pointer_size;
 extern int unwind_tables;
+extern int use_dlltool;
 extern int use_msvcrt;
-extern int unix_lib;
 extern int safe_seh;
 extern int prefer_native;
 extern int data_only;
@@ -389,6 +388,5 @@ extern char *arch_option;
 extern const char *float_abi_option;
 extern int thumb_mode;
 extern int needs_get_pc_thunk;
-extern int needs_invoke32;
 
 #endif  /* __WINE_BUILD_H */

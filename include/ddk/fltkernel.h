@@ -18,8 +18,6 @@
 #ifndef __FLTKERNEL__
 #define __FLTKERNEL__
 
-#include "wine/winheader_enter.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -587,7 +585,7 @@ typedef struct _FLT_CALLBACK_DATA
     KPROCESSOR_MODE RequestorMode;
 } FLT_CALLBACK_DATA, *PFLT_CALLBACK_DATA;
 
-typedef void*    (WINAPI *PFLT_CONTEXT_ALLOCATE_CALLBACK)(POOL_TYPE,SIZE_T,FLT_CONTEXT_TYPE);
+typedef void*    (__WINE_ALLOC_SIZE(2) WINAPI *PFLT_CONTEXT_ALLOCATE_CALLBACK)(POOL_TYPE,SIZE_T,FLT_CONTEXT_TYPE);
 typedef void     (WINAPI *PFLT_CONTEXT_CLEANUP_CALLBACK)(PFLT_CONTEXT, FLT_CONTEXT_TYPE);
 typedef void     (WINAPI *PFLT_CONTEXT_FREE_CALLBACK)(void *, FLT_CONTEXT_TYPE);
 typedef NTSTATUS (WINAPI *PFLT_FILTER_UNLOAD_CALLBACK)(FLT_FILTER_UNLOAD_FLAGS);
@@ -664,7 +662,5 @@ void     WINAPI FltUnregisterFilter(PFLT_FILTER);
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif

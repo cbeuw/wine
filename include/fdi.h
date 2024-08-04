@@ -19,8 +19,6 @@
 #ifndef __WINE_FDI_H
 #define __WINE_FDI_H
 
-#include "wine/winheader_enter.h"
-
 #include <basetsd.h>
 
 #ifdef __cplusplus
@@ -205,8 +203,8 @@ typedef struct {
 
 /**********************************************************************/
 
-typedef void * (__cdecl *PFNALLOC)(ULONG cb);
-#define FNALLOC(fn) void * __cdecl fn(ULONG cb)
+typedef void * (__WINE_ALLOC_SIZE(1) __cdecl *PFNALLOC)(ULONG cb);
+#define FNALLOC(fn) void * __WINE_ALLOC_SIZE(1) __cdecl fn(ULONG cb)
 
 typedef void (__cdecl *PFNFREE)(void *pv);
 #define FNFREE(fn) void __cdecl fn(void *pv)
@@ -299,7 +297,5 @@ BOOL __cdecl FDITruncateCabinet(HFDI, char *, USHORT);
 #ifdef __cplusplus
 } /* extern "C" */
 #endif /* defined(__cplusplus) */
-
-#include "wine/winheader_exit.h"
 
 #endif  /* __WINE_FDI_H */

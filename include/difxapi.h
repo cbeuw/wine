@@ -19,11 +19,22 @@
 #ifndef __WINE_DIFXAPI_H
 #define __WINE_DIFXAPI_H
 
-#include "wine/winheader_enter.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define ERROR_DEPENDENT_APPLICATIONS_EXIST  0xe0000300
+#define ERROR_NO_DEVICE_ID                  0xe0000301
+#define ERROR_DRIVER_PACKAGE_NOT_IN_STORE   0xe0000302
+#define ERROR_MISSING_FILE                  0xe0000303
+#define ERROR_INVALID_CATALOG_DATA          0xe0000304
+
+#define DRIVER_PACKAGE_REPAIR                   0x00000001
+#define DRIVER_PACKAGE_SILENT                   0x00000002
+#define DRIVER_PACKAGE_FORCE                    0x00000004
+#define DRIVER_PACKAGE_ONLY_IF_DEVICE_PRESENT   0x00000008
+#define DRIVER_PACKAGE_LEGACY_MODE              0x00000010
+#define DRIVER_PACKAGE_DELETE_FILES             0x00000020
 
 typedef struct _INSTALLERINFO_A
 {
@@ -51,8 +62,8 @@ typedef enum _DIFXAPI_LOG
     DIFXAPI_ERROR,
 } DIFXAPI_LOG;
 
-typedef VOID (CALLBACK *DIFXAPILOGCALLBACK_A)(DIFXAPI_LOG,DWORD,PCSTR,PVOID);
-typedef VOID (CALLBACK *DIFXAPILOGCALLBACK_W)(DIFXAPI_LOG,DWORD,PCWSTR,PVOID);
+typedef void (__cdecl *DIFXAPILOGCALLBACK_A)(DIFXAPI_LOG, DWORD, const char *, void *);
+typedef void (__cdecl *DIFXAPILOGCALLBACK_W)(DIFXAPI_LOG, DWORD, const WCHAR *, void *);
 typedef VOID (CALLBACK *DIFXLOGCALLBACK_A)(DIFXAPI_LOG,DWORD,PCSTR,PVOID);
 typedef VOID (CALLBACK *DIFXLOGCALLBACK_W)(DIFXAPI_LOG,DWORD,PCWSTR,PVOID);
 
@@ -72,7 +83,5 @@ VOID  WINAPI SetDifxLogCallbackW(DIFXLOGCALLBACK_W,VOID*);
 #ifdef __cplusplus
 }
 #endif
-
-#include "wine/winheader_exit.h"
 
 #endif  /* __WINE_DIFXAPI_H */

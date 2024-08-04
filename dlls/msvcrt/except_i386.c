@@ -144,25 +144,10 @@ typedef struct
 DWORD CDECL cxx_frame_handler( PEXCEPTION_RECORD rec, cxx_exception_frame* frame,
                                PCONTEXT context, EXCEPTION_REGISTRATION_RECORD** dispatch,
                                const cxx_function_descr *descr,
-                               catch_func_nested_frame* nested_frame ) DECLSPEC_HIDDEN;
+                               catch_func_nested_frame* nested_frame );
 
 /* call a copy constructor */
 extern void call_copy_ctor( void *func, void *this, void *src, int has_vbase );
-
-__ASM_GLOBAL_FUNC( call_copy_ctor,
-                   "pushl %ebp\n\t"
-                   __ASM_CFI(".cfi_adjust_cfa_offset 4\n\t")
-                   __ASM_CFI(".cfi_rel_offset %ebp,0\n\t")
-                   "movl %esp, %ebp\n\t"
-                   __ASM_CFI(".cfi_def_cfa_register %ebp\n\t")
-                   "pushl $1\n\t"
-                   "movl 12(%ebp), %ecx\n\t"
-                   "pushl 16(%ebp)\n\t"
-                   "call *8(%ebp)\n\t"
-                   "leave\n"
-                   __ASM_CFI(".cfi_def_cfa %esp,4\n\t")
-                   __ASM_CFI(".cfi_same_value %ebp\n\t")
-                   "ret" );
 
 /* continue execution to the specified address after exception is caught */
 extern void DECLSPEC_NORETURN continue_after_catch( cxx_exception_frame* frame, void *addr );
@@ -370,7 +355,7 @@ static DWORD catch_function_nested_handler( EXCEPTION_RECORD *rec, EXCEPTION_REG
             if(TRACE_ON(seh)) {
                 TRACE("detect rethrow: exception code: %lx\n", rec->ExceptionCode);
                 if(rec->ExceptionCode == CXX_EXCEPTION)
-                    TRACE("re-propagate: obj: %lx, type: %lx\n",
+                    TRACE("re-propagate: obj: %Ix, type: %Ix\n",
                             rec->ExceptionInformation[1], rec->ExceptionInformation[2]);
             }
         }
@@ -603,7 +588,7 @@ DWORD CDECL cxx_frame_handler( PEXCEPTION_RECORD rec, cxx_exception_frame* frame
         if(TRACE_ON(seh)) {
             TRACE("detect rethrow: exception code: %lx\n", rec->ExceptionCode);
             if(rec->ExceptionCode == CXX_EXCEPTION)
-                TRACE("re-propagate: obj: %lx, type: %lx\n",
+                TRACE("re-propagate: obj: %Ix, type: %Ix\n",
                         rec->ExceptionInformation[1], rec->ExceptionInformation[2]);
         }
     }
@@ -1040,7 +1025,7 @@ typedef void (__stdcall *MSVCRT_unwind_function)(const _JUMP_BUFFER *);
  *		_setjmp (MSVCRT.@)
  */
 DEFINE_SETJMP_ENTRYPOINT(MSVCRT__setjmp)
-int CDECL DECLSPEC_HIDDEN __regs_MSVCRT__setjmp(_JUMP_BUFFER *jmp)
+int CDECL __regs_MSVCRT__setjmp(_JUMP_BUFFER *jmp)
 {
     jmp->Registration = (unsigned long)NtCurrentTeb()->Tib.ExceptionList;
     if (jmp->Registration == ~0UL)
@@ -1057,7 +1042,7 @@ int CDECL DECLSPEC_HIDDEN __regs_MSVCRT__setjmp(_JUMP_BUFFER *jmp)
  *		_setjmp3 (MSVCRT.@)
  */
 DEFINE_SETJMP_ENTRYPOINT( MSVCRT__setjmp3 )
-int WINAPIV DECLSPEC_HIDDEN __regs_MSVCRT__setjmp3(_JUMP_BUFFER *jmp, int nb_args, ...)
+int WINAPIV __regs_MSVCRT__setjmp3(_JUMP_BUFFER *jmp, int nb_args, ...)
 {
     jmp->Cookie = MSVCRT_JMP_MAGIC;
     jmp->UnwindFunc = 0;

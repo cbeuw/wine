@@ -33,12 +33,6 @@ enum startup_state { STARTUP_IN_PROGRESS, STARTUP_DONE, STARTUP_ABORTED };
 
 /* process structures */
 
-struct rawinput_device_entry
-{
-    struct list            entry;
-    struct rawinput_device device;
-};
-
 struct process
 {
     struct object        obj;             /* object header */
@@ -79,14 +73,14 @@ struct process
     struct event        *idle_event;      /* event for input idle */
     obj_handle_t         winstation;      /* main handle to process window station */
     obj_handle_t         desktop;         /* handle to desktop to use for new threads */
-    struct list          surfaces;        /* list of surfaces that are flushed to this process */
     struct token        *token;           /* security token associated with this process */
     struct list          views;           /* list of memory views */
     client_ptr_t         peb;             /* PEB address in client address space */
     client_ptr_t         ldt_copy;        /* pointer to LDT copy in client addr space */
     struct dir_cache    *dir_cache;       /* map of client-side directory cache */
     unsigned int         trace_data;      /* opaque data used by the process tracing mechanism */
-    struct list          rawinput_devices;/* list of registered rawinput devices */
+    struct rawinput_device *rawinput_devices;     /* list of registered rawinput devices */
+    unsigned int         rawinput_device_count;   /* number of registered rawinput devices */
     const struct rawinput_device *rawinput_mouse; /* rawinput mouse device, if any */
     const struct rawinput_device *rawinput_kbd;   /* rawinput keyboard device, if any */
     struct list          kernel_object;   /* list of kernel object pointers */
@@ -116,7 +110,6 @@ extern void add_process_thread( struct process *process,
                                 struct thread *thread );
 extern void remove_process_thread( struct process *process,
                                    struct thread *thread );
-extern void remove_process_surfaces( struct process *process );
 extern void suspend_process( struct process *process );
 extern void resume_process( struct process *process );
 extern void kill_process( struct process *process, int violent_death );

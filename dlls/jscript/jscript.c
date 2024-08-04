@@ -83,12 +83,23 @@ void script_release(script_ctx_t *ctx)
     if(ctx->last_match)
         jsstr_release(ctx->last_match);
     assert(!ctx->stack_top);
-    heap_free(ctx->stack);
+    free(ctx->stack);
 
     ctx->jscaller->ctx = NULL;
     IServiceProvider_Release(&ctx->jscaller->IServiceProvider_iface);
 
-    heap_free(ctx);
+    free(ctx);
+}
+
+static void script_globals_release(script_ctx_t *ctx)
+{
+    unsigned i;
+    for(i = 0; i < ARRAY_SIZE(ctx->global_objects); i++) {
+        if(ctx->global_objects[i]) {
+            jsdisp_release(ctx->global_objects[i]);
+            ctx->global_objects[i] = NULL;
+        }
+    }
 }
 
 static void change_state(JScript *This, SCRIPTSTATE state)
@@ -181,8 +192,8 @@ void release_named_item(named_item_t *item)
 {
     if(--item->ref) return;
 
-    heap_free(item->name);
-    heap_free(item);
+    free(item->name);
+    free(item);
 }
 
 static inline JScriptError *impl_from_IActiveScriptError(IActiveScriptError *iface)
@@ -229,7 +240,7 @@ static ULONG WINAPI JScriptError_Release(IActiveScriptError *iface)
 
     if(!ref) {
         reset_ei(&This->ei);
-        heap_free(This);
+        free(This);
     }
 
     return ref;
@@ -356,7 +367,7 @@ HRESULT leave_script(script_ctx_t *ctx, HRESULT result)
     }
     if(FAILED(result)) {
         WARN("%08lx\n", result);
-        if(ctx->site && (error = heap_alloc(sizeof(*error)))) {
+        if(ctx->site && (error = malloc(sizeof(*error)))) {
             HRESULT hres;
 
             error->IActiveScriptError_iface.lpVtbl = &JScriptErrorVtbl;
@@ -417,6 +428,17 @@ static void release_named_item_list(JScript *This)
     }
 }
 
+static HRESULT exec_global_code(script_ctx_t *ctx, bytecode_t *code, jsval_t *r)
+{
+    IServiceProvider *prev_caller = ctx->jscaller->caller;
+    HRESULT hres;
+
+    ctx->jscaller->caller = SP_CALLER_UNINITIALIZED;
+    hres = exec_source(ctx, EXEC_GLOBAL, code, &code->global_code, NULL, NULL, NULL, 0, NULL, r);
+    ctx->jscaller->caller = prev_caller;
+    return hres;
+}
+
 static void exec_queued_code(JScript *This)
 {
     bytecode_t *iter;
@@ -425,7 +447,7 @@ static void exec_queued_code(JScript *This)
 
     LIST_FOR_EACH_ENTRY(iter, &This->queued_code, bytecode_t, entry) {
         enter_script(This->ctx, &ei);
-        hres = exec_source(This->ctx, EXEC_GLOBAL, iter, &iter->global_code, NULL, NULL, NULL, 0, NULL, NULL);
+        hres = exec_global_code(This->ctx, iter, NULL);
         leave_script(This->ctx, hres);
         if(FAILED(hres))
             break;
@@ -483,25 +505,9 @@ static void decrease_state(JScript *This, SCRIPTSTATE state)
                 This->ctx->site = NULL;
             }
 
-            if(This->ctx->map_prototype) {
-                jsdisp_release(This->ctx->map_prototype);
-                This->ctx->map_prototype = NULL;
-            }
+            script_globals_release(This->ctx);
+            gc_run(This->ctx);
 
-            if(This->ctx->set_prototype) {
-                jsdisp_release(This->ctx->set_prototype);
-                This->ctx->set_prototype = NULL;
-            }
-
-            if(This->ctx->object_prototype) {
-                jsdisp_release(This->ctx->object_prototype);
-                This->ctx->object_prototype = NULL;
-            }
-
-            if(This->ctx->global) {
-                jsdisp_release(This->ctx->global);
-                This->ctx->global = NULL;
-            }
             /* FALLTHROUGH */
         case SCRIPTSTATE_UNINITIALIZED:
             change_state(This, state);
@@ -582,7 +588,7 @@ static ULONG WINAPI AXSite_Release(IServiceProvider *iface)
         if(This->sp)
             IServiceProvider_Release(This->sp);
 
-        heap_free(This);
+        free(This);
     }
 
     return ref;
@@ -619,7 +625,7 @@ IUnknown *create_ax_site(script_ctx_t *ctx)
         TRACE("Could not get IServiceProvider iface: %08lx\n", hres);
     }
 
-    ret = heap_alloc(sizeof(AXSite));
+    ret = malloc(sizeof(AXSite));
     if(!ret) {
         IServiceProvider_Release(sp);
         return NULL;
@@ -702,11 +708,18 @@ static ULONG WINAPI JScript_Release(IActiveScript *iface)
             This->ctx->active_script = NULL;
             script_release(This->ctx);
         }
-        heap_free(This);
+        free(This);
         unlock_module();
     }
 
     return ref;
+}
+
+static int weak_refs_compare(const void *key, const struct rb_entry *entry)
+{
+    const struct weak_refs_entry *weak_refs_entry = RB_ENTRY_VALUE(entry, const struct weak_refs_entry, entry);
+    ULONG_PTR a = (ULONG_PTR)key, b = (ULONG_PTR)LIST_ENTRY(weak_refs_entry->list.next, struct weakmap_entry, weak_refs_entry)->key;
+    return (a > b) - (a < b);
 }
 
 static HRESULT WINAPI JScript_SetScriptSite(IActiveScript *iface,
@@ -729,7 +742,7 @@ static HRESULT WINAPI JScript_SetScriptSite(IActiveScript *iface,
         return E_UNEXPECTED;
 
     if(!This->ctx) {
-        script_ctx_t *ctx = heap_alloc_zero(sizeof(script_ctx_t));
+        script_ctx_t *ctx = calloc(1, sizeof(script_ctx_t));
         if(!ctx)
             return E_OUTOFMEMORY;
 
@@ -741,11 +754,13 @@ static HRESULT WINAPI JScript_SetScriptSite(IActiveScript *iface,
         ctx->html_mode = This->html_mode;
         ctx->acc = jsval_undefined();
         list_init(&ctx->named_items);
+        list_init(&ctx->objects);
+        rb_init(&ctx->weak_refs, weak_refs_compare);
         heap_pool_init(&ctx->tmp_heap);
 
         hres = create_jscaller(ctx);
         if(FAILED(hres)) {
-            heap_free(ctx);
+            free(ctx);
             return hres;
         }
 
@@ -824,7 +839,7 @@ static HRESULT WINAPI JScript_SetScriptState(IActiveScript *iface, SCRIPTSTATE s
     switch(ss) {
     case SCRIPTSTATE_STARTED:
     case SCRIPTSTATE_CONNECTED: /* FIXME */
-        if(This->ctx->state == SCRIPTSTATE_CLOSED)
+        if(This->ctx->state == SCRIPTSTATE_UNINITIALIZED || This->ctx->state == SCRIPTSTATE_CLOSED)
             return E_UNEXPECTED;
 
         exec_queued_code(This);
@@ -902,7 +917,7 @@ static HRESULT WINAPI JScript_AddNamedItem(IActiveScript *iface,
         }
     }
 
-    item = heap_alloc(sizeof(*item));
+    item = malloc(sizeof(*item));
     if(!item) {
         if(disp)
             IDispatch_Release(disp);
@@ -913,11 +928,11 @@ static HRESULT WINAPI JScript_AddNamedItem(IActiveScript *iface,
     item->disp = disp;
     item->flags = dwFlags;
     item->script_obj = NULL;
-    item->name = heap_strdupW(pstrName);
+    item->name = wcsdup(pstrName);
     if(!item->name) {
         if(disp)
             IDispatch_Release(disp);
-        heap_free(item);
+        free(item);
         return E_OUTOFMEMORY;
     }
 
@@ -1107,7 +1122,7 @@ static HRESULT WINAPI JScriptParse_ParseScriptText(IActiveScriptParse *iface,
     if(dwFlags & SCRIPTTEXT_ISEXPRESSION) {
         jsval_t r;
 
-        hres = exec_source(This->ctx, EXEC_GLOBAL, code, &code->global_code, NULL, NULL, NULL, 0, NULL, &r);
+        hres = exec_global_code(This->ctx, code, &r);
         if(SUCCEEDED(hres)) {
             if(pvarResult)
                 hres = jsval_to_variant(r, pvarResult);
@@ -1126,7 +1141,7 @@ static HRESULT WINAPI JScriptParse_ParseScriptText(IActiveScriptParse *iface,
     if(!pvarResult && !is_started(This->ctx)) {
         list_add_tail(&This->queued_code, &code->entry);
     }else {
-        hres = exec_source(This->ctx, EXEC_GLOBAL, code, &code->global_code, NULL, NULL, NULL, 0, NULL, NULL);
+        hres = exec_global_code(This->ctx, code, NULL);
         if(code->is_persistent)
             list_add_tail(&This->persistent_code, &code->entry);
         else
@@ -1204,9 +1219,12 @@ static HRESULT WINAPI JScriptParseProcedure_ParseProcedureText(IActiveScriptPars
     enter_script(This->ctx, &ei);
     hres = compile_script(This->ctx, pstrCode, dwSourceContextCookie, ulStartingLineNumber, pstrFormalParams,
                           pstrDelimiter, FALSE, This->is_encode, item, &code);
-    if(SUCCEEDED(hres))
-        hres = create_source_function(This->ctx, code, &code->global_code, NULL,  &dispex);
+    if(FAILED(hres))
+        return leave_script(This->ctx, hres);
+
+    hres = create_source_function(This->ctx, code, &code->global_code, NULL, &dispex);
     release_bytecode(code);
+
     hres = leave_script(This->ctx, hres);
     if(FAILED(hres))
         return hres;
@@ -1418,7 +1436,7 @@ HRESULT create_jscript_object(BOOL is_encode, REFIID riid, void **ppv)
     JScript *ret;
     HRESULT hres;
 
-    ret = heap_alloc_zero(sizeof(*ret));
+    ret = calloc(1, sizeof(*ret));
     if(!ret)
         return E_OUTOFMEMORY;
 

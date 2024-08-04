@@ -183,6 +183,51 @@ static void test_signalandwait(void)
     CloseHandle(file);
 }
 
+static void test_temporary_objects(void)
+{
+    HANDLE handle;
+
+    SetLastError(0xdeadbeef);
+    handle = CreateMutexA(NULL, FALSE, "WineTestMutex2");
+    ok(handle != NULL, "CreateMutex failed with error %ld\n", GetLastError());
+    CloseHandle(handle);
+
+    SetLastError(0xdeadbeef);
+    handle = OpenMutexA(READ_CONTROL, FALSE, "WineTestMutex2");
+    ok(!handle, "OpenMutex succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "wrong error %lu\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    handle = CreateSemaphoreA(NULL, 0, 1, "WineTestSemaphore2");
+    ok(handle != NULL, "CreateSemaphore failed with error %ld\n", GetLastError());
+    CloseHandle(handle);
+
+    SetLastError(0xdeadbeef);
+    handle = OpenSemaphoreA(READ_CONTROL, FALSE, "WineTestSemaphore2");
+    ok(!handle, "OpenSemaphore succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "wrong error %lu\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    handle = CreateEventA(NULL, FALSE, FALSE, "WineTestEvent2");
+    ok(handle != NULL, "CreateEvent failed with error %ld\n", GetLastError());
+    CloseHandle(handle);
+
+    SetLastError(0xdeadbeef);
+    handle = OpenEventA(READ_CONTROL, FALSE, "WineTestEvent2");
+    ok(!handle, "OpenEvent succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "wrong error %lu\n", GetLastError());
+
+    SetLastError(0xdeadbeef);
+    handle = CreateWaitableTimerA(NULL, FALSE, "WineTestWaitableTimer2");
+    ok(handle != NULL, "CreateWaitableTimer failed with error %ld\n", GetLastError());
+    CloseHandle(handle);
+
+    SetLastError(0xdeadbeef);
+    handle = OpenWaitableTimerA(READ_CONTROL, FALSE, "WineTestWaitableTimer2");
+    ok(!handle, "OpenWaitableTimer succeeded\n");
+    ok(GetLastError() == ERROR_FILE_NOT_FOUND, "wrong error %lu\n", GetLastError());
+}
+
 static HANDLE mutex, mutex2, mutices[2];
 
 static DWORD WINAPI mutex_thread( void *param )
@@ -2337,6 +2382,7 @@ static struct
     LONG trylock_shared;
 } srwlock_base_errors;
 
+#if defined(__i386__) || defined(__x86_64__)
 #include "pshpack1.h"
 struct
 {
@@ -2344,6 +2390,7 @@ struct
     SRWLOCK lock;
 } unaligned_srwlock;
 #include "poppack.h"
+#endif
 
 /* Sequence of acquire/release to check boundary conditions:
  *  0: init
@@ -2864,6 +2911,22 @@ static void test_srwlock_example(void)
     trace("number of total exclusive accesses is %ld\n", srwlock_protected_value);
 }
 
+static void test_srwlock_quirk(void)
+{
+    union { SRWLOCK *s; LONG *l; } u = { &srwlock_example };
+
+    if (!pInitializeSRWLock) {
+        /* function is not yet in XP, only in newer Windows */
+        win_skip("no srw lock support.\n");
+        return;
+    }
+
+    /* WeCom 4.x checks releasing a lock with value 0x1 results in it becoming 0x0. */
+    *u.l = 1;
+    pReleaseSRWLockExclusive(&srwlock_example);
+    ok(*u.l == 0, "expected 0x0, got %lx\n", *u.l);
+}
+
 static DWORD WINAPI alertable_wait_thread(void *param)
 {
     HANDLE *semaphores = param;
@@ -3280,6 +3343,7 @@ START_TEST(sync)
 
     test_QueueUserAPC();
     test_signalandwait();
+    test_temporary_objects();
     test_mutex();
     test_slist();
     test_event();
@@ -3294,7 +3358,11 @@ START_TEST(sync)
     test_condvars_base(&unaligned_cv.cv);
     test_condvars_consumer_producer();
     test_srwlock_base(&aligned_srwlock);
+    test_srwlock_quirk();
+#if defined(__i386__) || defined(__x86_64__)
+    /* unaligned locks only work on x86 platforms */
     test_srwlock_base(&unaligned_srwlock.lock);
+#endif
     test_srwlock_example();
     test_alertable_wait();
     test_apc_deadlock();

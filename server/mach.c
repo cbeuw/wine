@@ -31,6 +31,9 @@
 #ifdef HAVE_SYS_SYSCALL_H
 #include <sys/syscall.h>
 #endif
+#ifdef HAVE_SYS_SYSCTL_H
+#include <sys/sysctl.h>
+#endif
 
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
@@ -73,6 +76,25 @@ static void mach_set_error(kern_return_t mach_error)
 static mach_port_t get_process_port( struct process *process )
 {
     return process->trace_data;
+}
+
+static int is_rosetta( void )
+{
+    static int rosetta_status, did_check = 0;
+    if (!did_check)
+    {
+        /* returns 0 for native process or on error, 1 for translated */
+        int ret = 0;
+        size_t size = sizeof(ret);
+        if (sysctlbyname( "sysctl.proc_translated", &ret, &size, NULL, 0 ) == -1)
+            rosetta_status = 0;
+        else
+            rosetta_status = ret;
+
+        did_check = 1;
+    }
+
+    return rosetta_status;
 }
 
 /* initialize the process control mechanism */
@@ -152,23 +174,24 @@ void init_thread_context( struct thread *thread )
 {
 }
 
-static int is_rosetta( void )
+/* CX HACK 21217 */
+static int is_apple_silicon( void )
 {
-    static int rosetta_status, did_check = 0;
+    static int apple_silicon_status, did_check = 0;
     if (!did_check)
     {
         /* returns 0 for native process or on error, 1 for translated */
         int ret = 0;
         size_t size = sizeof(ret);
         if (sysctlbyname( "sysctl.proc_translated", &ret, &size, NULL, 0 ) == -1)
-            rosetta_status = 0;
+            apple_silicon_status = 0;
         else
-            rosetta_status = ret;
+            apple_silicon_status = ret;
 
         did_check = 1;
     }
 
-    return rosetta_status;
+    return apple_silicon_status;
 }
 
 /* retrieve the thread x86 registers */
@@ -179,9 +202,19 @@ void get_thread_context( struct thread *thread, context_t *context, unsigned int
     mach_msg_type_number_t count = sizeof(state) / sizeof(int);
     mach_msg_type_name_t type;
     mach_port_t port, process_port = get_process_port( thread->process );
+    kern_return_t ret;
+    unsigned long dr[8];
 
     /* all other regs are handled on the client side */
     assert( flags == SERVER_CTX_DEBUG_REGISTERS );
+
+    if (is_rosetta())
+    {
+        /* getting debug registers of a translated process is not supported cross-process, return all zeroes */
+        memset( &context->debug, 0, sizeof(context->debug) );
+        context->flags |= SERVER_CTX_DEBUG_REGISTERS;
+        return;
+    }
 
     if (thread->unix_pid == -1 || !process_port ||
         mach_port_extract_right( process_port, thread->unix_tid,
@@ -191,43 +224,65 @@ void get_thread_context( struct thread *thread, context_t *context, unsigned int
         return;
     }
 
-    if (!thread_get_state( port, x86_DEBUG_STATE, (thread_state_t)&state, &count ))
+    ret = thread_get_state( port, x86_DEBUG_STATE, (thread_state_t)&state, &count );
+    if (!ret)
     {
-#ifdef __x86_64__
         assert( state.dsh.flavor == x86_DEBUG_STATE32 ||
                 state.dsh.flavor == x86_DEBUG_STATE64 );
-#else
-        assert( state.dsh.flavor == x86_DEBUG_STATE32 );
-#endif
 
-#ifdef __x86_64__
         if (state.dsh.flavor == x86_DEBUG_STATE64)
         {
-            context->debug.x86_64_regs.dr0 = state.uds.ds64.__dr0;
-            context->debug.x86_64_regs.dr1 = state.uds.ds64.__dr1;
-            context->debug.x86_64_regs.dr2 = state.uds.ds64.__dr2;
-            context->debug.x86_64_regs.dr3 = state.uds.ds64.__dr3;
-            context->debug.x86_64_regs.dr6 = state.uds.ds64.__dr6;
-            context->debug.x86_64_regs.dr7 = state.uds.ds64.__dr7;
+            dr[0] = state.uds.ds64.__dr0;
+            dr[1] = state.uds.ds64.__dr1;
+            dr[2] = state.uds.ds64.__dr2;
+            dr[3] = state.uds.ds64.__dr3;
+            dr[6] = state.uds.ds64.__dr6;
+            dr[7] = state.uds.ds64.__dr7;
         }
         else
-#endif
         {
-            context->debug.i386_regs.dr0 = state.uds.ds32.__dr0;
-            context->debug.i386_regs.dr1 = state.uds.ds32.__dr1;
-            context->debug.i386_regs.dr2 = state.uds.ds32.__dr2;
-            context->debug.i386_regs.dr3 = state.uds.ds32.__dr3;
-            context->debug.i386_regs.dr6 = state.uds.ds32.__dr6;
-            context->debug.i386_regs.dr7 = state.uds.ds32.__dr7;
+            dr[0] = state.uds.ds32.__dr0;
+            dr[1] = state.uds.ds32.__dr1;
+            dr[2] = state.uds.ds32.__dr2;
+            dr[3] = state.uds.ds32.__dr3;
+            dr[6] = state.uds.ds32.__dr6;
+            dr[7] = state.uds.ds32.__dr7;
+        }
+
+        switch (context->machine)
+        {
+        case IMAGE_FILE_MACHINE_I386:
+            context->debug.i386_regs.dr0 = dr[0];
+            context->debug.i386_regs.dr1 = dr[1];
+            context->debug.i386_regs.dr2 = dr[2];
+            context->debug.i386_regs.dr3 = dr[3];
+            context->debug.i386_regs.dr6 = dr[6];
+            context->debug.i386_regs.dr7 = dr[7];
+            break;
+        case IMAGE_FILE_MACHINE_AMD64:
+            context->debug.x86_64_regs.dr0 = dr[0];
+            context->debug.x86_64_regs.dr1 = dr[1];
+            context->debug.x86_64_regs.dr2 = dr[2];
+            context->debug.x86_64_regs.dr3 = dr[3];
+            context->debug.x86_64_regs.dr6 = dr[6];
+            context->debug.x86_64_regs.dr7 = dr[7];
+            break;
+        default:
+            set_error( STATUS_INVALID_PARAMETER );
+            goto done;
         }
         context->flags |= SERVER_CTX_DEBUG_REGISTERS;
     }
-    else if (is_rosetta())
+    else if (is_apple_silicon())
     {
-        /* getting debug registers of a translated process is not supported cross-process, return all zeroes */
+        /* CX HACK 21217: Fake debug registers on Apple Silicon */
+        fprintf( stderr, "%04x: thread_get_state failed on Apple Silicon - faking zero debug registers\n", thread->id );
         memset( &context->debug, 0, sizeof(context->debug) );
         context->flags |= SERVER_CTX_DEBUG_REGISTERS;
     }
+    else
+        mach_set_error( ret );
+done:
     mach_port_deallocate( mach_task_self(), port );
 #endif
 }
@@ -240,18 +295,11 @@ void set_thread_context( struct thread *thread, const context_t *context, unsign
     mach_msg_type_number_t count = sizeof(state) / sizeof(int);
     mach_msg_type_name_t type;
     mach_port_t port, process_port = get_process_port( thread->process );
-    unsigned int dr7;
+    unsigned long dr[8];
+    kern_return_t ret;
 
     /* all other regs are handled on the client side */
     assert( flags == SERVER_CTX_DEBUG_REGISTERS );
-
-    if (thread->unix_pid == -1 || !process_port ||
-        mach_port_extract_right( process_port, thread->unix_tid,
-                                 MACH_MSG_TYPE_COPY_SEND, &port, &type ))
-    {
-        set_error( STATUS_ACCESS_DENIED );
-        return;
-    }
 
     if (is_rosetta())
     {
@@ -262,40 +310,78 @@ void set_thread_context( struct thread *thread, const context_t *context, unsign
         return;
     }
 
-#ifdef __x86_64__
-    if (thread->process->machine == IMAGE_FILE_MACHINE_AMD64)
+    if (thread->unix_pid == -1 || !process_port ||
+        mach_port_extract_right( process_port, thread->unix_tid,
+                                 MACH_MSG_TYPE_COPY_SEND, &port, &type ))
     {
-        /* Mac OS doesn't allow setting the global breakpoint flags */
-        dr7 = (context->debug.x86_64_regs.dr7 & ~0xaa) | ((context->debug.x86_64_regs.dr7 & 0xaa) >> 1);
+        set_error( STATUS_ACCESS_DENIED );
+        return;
+    }
 
-        state.dsh.flavor = x86_DEBUG_STATE64;
+    /* get the debug state to determine which flavor to use */
+    ret = thread_get_state(port, x86_DEBUG_STATE, (thread_state_t)&state, &count);
+    if (ret)
+    {
+        mach_set_error( ret );
+        goto done;
+    }
+    assert( state.dsh.flavor == x86_DEBUG_STATE32 ||
+            state.dsh.flavor == x86_DEBUG_STATE64 );
+
+    switch (context->machine)
+    {
+        case IMAGE_FILE_MACHINE_I386:
+            dr[0] = context->debug.i386_regs.dr0;
+            dr[1] = context->debug.i386_regs.dr1;
+            dr[2] = context->debug.i386_regs.dr2;
+            dr[3] = context->debug.i386_regs.dr3;
+            dr[6] = context->debug.i386_regs.dr6;
+            dr[7] = context->debug.i386_regs.dr7;
+            break;
+        case IMAGE_FILE_MACHINE_AMD64:
+            dr[0] = context->debug.x86_64_regs.dr0;
+            dr[1] = context->debug.x86_64_regs.dr1;
+            dr[2] = context->debug.x86_64_regs.dr2;
+            dr[3] = context->debug.x86_64_regs.dr3;
+            dr[6] = context->debug.x86_64_regs.dr6;
+            dr[7] = context->debug.x86_64_regs.dr7;
+            break;
+        default:
+            set_error( STATUS_INVALID_PARAMETER );
+            goto done;
+    }
+
+    /* Mac OS doesn't allow setting the global breakpoint flags */
+    dr[7] = (dr[7] & ~0xaa) | ((dr[7] & 0xaa) >> 1);
+
+    if (state.dsh.flavor == x86_DEBUG_STATE64)
+    {
         state.dsh.count = sizeof(state.uds.ds64) / sizeof(int);
-        state.uds.ds64.__dr0 = context->debug.x86_64_regs.dr0;
-        state.uds.ds64.__dr1 = context->debug.x86_64_regs.dr1;
-        state.uds.ds64.__dr2 = context->debug.x86_64_regs.dr2;
-        state.uds.ds64.__dr3 = context->debug.x86_64_regs.dr3;
+        state.uds.ds64.__dr0 = dr[0];
+        state.uds.ds64.__dr1 = dr[1];
+        state.uds.ds64.__dr2 = dr[2];
+        state.uds.ds64.__dr3 = dr[3];
         state.uds.ds64.__dr4 = 0;
         state.uds.ds64.__dr5 = 0;
-        state.uds.ds64.__dr6 = context->debug.x86_64_regs.dr6;
-        state.uds.ds64.__dr7 = dr7;
+        state.uds.ds64.__dr6 = dr[6];
+        state.uds.ds64.__dr7 = dr[7];
     }
     else
-#endif
     {
-        dr7 = (context->debug.i386_regs.dr7 & ~0xaa) | ((context->debug.i386_regs.dr7 & 0xaa) >> 1);
-
-        state.dsh.flavor = x86_DEBUG_STATE32;
         state.dsh.count = sizeof(state.uds.ds32) / sizeof(int);
-        state.uds.ds32.__dr0 = context->debug.i386_regs.dr0;
-        state.uds.ds32.__dr1 = context->debug.i386_regs.dr1;
-        state.uds.ds32.__dr2 = context->debug.i386_regs.dr2;
-        state.uds.ds32.__dr3 = context->debug.i386_regs.dr3;
+        state.uds.ds32.__dr0 = dr[0];
+        state.uds.ds32.__dr1 = dr[1];
+        state.uds.ds32.__dr2 = dr[2];
+        state.uds.ds32.__dr3 = dr[3];
         state.uds.ds32.__dr4 = 0;
         state.uds.ds32.__dr5 = 0;
-        state.uds.ds32.__dr6 = context->debug.i386_regs.dr6;
-        state.uds.ds32.__dr7 = dr7;
+        state.uds.ds32.__dr6 = dr[6];
+        state.uds.ds32.__dr7 = dr[7];
     }
-    thread_set_state( port, x86_DEBUG_STATE, (thread_state_t)&state, count );
+    ret = thread_set_state( port, x86_DEBUG_STATE, (thread_state_t)&state, count );
+    if (ret)
+        mach_set_error( ret );
+done:
     mach_port_deallocate( mach_task_self(), port );
 #endif
 }

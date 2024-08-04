@@ -19,8 +19,6 @@
 #ifndef WINE_IPTYPES_H_
 #define WINE_IPTYPES_H_
 
-#include "wine/winheader_enter.h"
-
 #include <time.h>
 #include <ifdef.h>
 #include <nldef.h>
@@ -327,13 +325,11 @@ typedef IP_ADAPTER_ADDRESSES_LH *PIP_ADAPTER_ADDRESSES;
 #define GAA_FLAG_INCLUDE_PREFIX              0x00000010
 #define GAA_FLAG_SKIP_FRIENDLY_NAME          0x00000020
 #define GAA_FLAG_INCLUDE_WINS_INFO           0x00000040
-#define GAA_FLAG_INCLUDE_ALL_GATEWAYS        0x00000080
+#define GAA_FLAG_INCLUDE_GATEWAYS            0x00000080
 #define GAA_FLAG_INCLUDE_ALL_INTERFACES      0x00000100
 #define GAA_FLAG_INCLUDE_ALL_COMPARTMENTS    0x00000200
 #define GAA_FLAG_INCLUDE_TUNNEL_BINDINGORDER 0x00000400
 
 #endif /* _WINSOCK2API_ */
-
-#include "wine/winheader_exit.h"
 
 #endif /* WINE_IPTYPES_H_*/

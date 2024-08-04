@@ -21,8 +21,6 @@
 #ifndef __WINE_NTSTATUS_H
 #define __WINE_NTSTATUS_H
 
-#include "wine/winheader_enter.h"
-
 #ifndef WIN32_NO_STATUS
 
 /*
@@ -1415,6 +1413,7 @@
 #define STATUS_SMI_PRIMITIVE_INSTALLER_FAILED        ((NTSTATUS) 0xC0150025)
 #define STATUS_GENERIC_COMMAND_FAILED                ((NTSTATUS) 0xC0150026)
 #define STATUS_SXS_FILE_HASH_MISSING                 ((NTSTATUS) 0xC0150027)
+#define STATUS_HANDLE_NO_LONGER_VALID                ((NTSTATUS) 0xC0190028)
 
 #define STATUS_GRAPHICS_NOT_EXCLUSIVE_MODE_OWNER                            ((NTSTATUS) 0xC01E0000)
 #define STATUS_GRAPHICS_INSUFFICIENT_DMA_BUFFER                             ((NTSTATUS) 0xC01E0001)
@@ -1716,7 +1715,5 @@
 #define DBG_EXCEPTION_NOT_HANDLED   ((NTSTATUS) 0x80010001)
 
 #endif /* WIN32_NO_STATUS */
-
-#include "wine/winheader_exit.h"
 
 #endif /* __WINE_NTSTATUS_H */

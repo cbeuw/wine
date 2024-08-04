@@ -19,12 +19,11 @@
  */
 
 #import <Cocoa/Cocoa.h>
-
-#include "wine/hostaddrspace_enter.h"
-
 #include "macdrv_cocoa.h"
 #import "cocoa_app.h"
 #import "cocoa_event.h"
+
+#pragma GCC diagnostic ignored "-Wdeclaration-after-statement"
 
 
 @interface WineStatusItem : NSView

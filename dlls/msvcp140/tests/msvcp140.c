@@ -150,6 +150,7 @@ typedef struct
 
 typedef struct cs_queue
 {
+    void *ctx;
     struct cs_queue *next;
     BOOL free;
     int unknown;
@@ -157,7 +158,6 @@ typedef struct cs_queue
 
 typedef struct
 {
-    ULONG_PTR unk_thread_id;
     cs_queue unk_active;
     void *unknown[2];
     cs_queue *head;
@@ -1614,12 +1614,14 @@ static void test_Copy_file(void)
     SetLastError(0xdeadbeef);
     ret = p_Copy_file(L"wine_test_dir/f1", L"wine_test_dir/f3");
     ok(ret == ERROR_SUCCESS, "Got unexpected ret %lu.\n", ret);
-    ok(GetLastError() == ret, "Got unexpected err %lu.\n", GetLastError());
+    ok(GetLastError() == ret || broken(GetLastError() == ERROR_INVALID_PARAMETER) /* some win8 machines */,
+            "Got unexpected err %lu.\n", GetLastError());
 
     SetLastError(0xdeadbeef);
     ret = p_Copy_file(L"wine_test_dir/f1", L"wine_test_dir/f3");
     ok(ret == ERROR_SUCCESS, "Got unexpected ret %lu.\n", ret);
-    ok(GetLastError() == ret, "Got unexpected err %lu.\n", GetLastError());
+    ok(GetLastError() == ret || broken(GetLastError() == ERROR_INVALID_PARAMETER) /* some win8 machines */,
+            "Got unexpected err %lu.\n", GetLastError());
 
     SetLastError(0xdeadbeef);
     ret = p_Copy_file(L"wine_test_dir/missing", L"wine_test_dir/f3");

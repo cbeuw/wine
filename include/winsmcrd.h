@@ -19,8 +19,6 @@
 #ifndef __WINE_WINSMCRD_H
 #define __WINE_WINSMCRD_H
 
-#include "wine/winheader_enter.h"
-
 #define SCARD_PROTOCOL_UNDEFINED        0x00000000
 #define SCARD_PROTOCOL_OPTIMAL          0x00000000
 #define SCARD_PROTOCOL_T0               0x00000001
@@ -29,13 +27,37 @@
 #define SCARD_PROTOCOL_DEFAULT          0x80000000
 #define SCARD_PROTOCOL_Tx               (SCARD_PROTOCOL_T0 | SCARD_PROTOCOL_T1)
 
+#define SCARD_UNKNOWN    0
+#define SCARD_ABSENT     1
+#define SCARD_PRESENT    2
+#define SCARD_SWALLOWED  3
+#define SCARD_POWERED    4
+#define SCARD_NEGOTIABLE 5
+#define SCARD_SPECIFIC   6
+
+#define SCARD_ATTR_VALUE(class, tag) ((((ULONG)(class)) << 16) | ((ULONG)(tag)))
+
+#define SCARD_CLASS_VENDOR_INFO    1
+#define SCARD_CLASS_COMMUNICATIONS 2
+#define SCARD_CLASS_PROTOCOL       3
+#define SCARD_CLASS_POWER_MGMT     4
+#define SCARD_CLASS_SECURITY       5
+#define SCARD_CLASS_MECHANICAL     6
+#define SCARD_CLASS_VENDOR_DEFINED 7
+#define SCARD_CLASS_IFD_PROTOCOL   8
+#define SCARD_CLASS_ICC_STATE      9
+#define SCARD_CLASS_PERF           0x7ffe
+#define SCARD_CLASS_SYSTEM         0x7fff
+
+#define SCARD_ATTR_VENDOR_NAME SCARD_ATTR_VALUE(SCARD_CLASS_VENDOR_INFO, 0x0100)
+
+#define SCARD_CTL_CODE(code) CTL_CODE(FILE_DEVICE_SMARTCARD, (code), METHOD_BUFFERED, FILE_ANY_ACCESS)
+
 typedef struct _SCARD_IO_REQUEST
 {
     DWORD dwProtocol;
     DWORD cbPciLength;
 } SCARD_IO_REQUEST, *PSCARD_IO_REQUEST, *LPSCARD_IO_REQUEST;
 typedef const SCARD_IO_REQUEST *LPCSCARD_IO_REQUEST;
-
-#include "wine/winheader_exit.h"
 
 #endif  /* __WINE_WINSMCRD_H */
