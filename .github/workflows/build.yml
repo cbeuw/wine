@@ -383,10 +383,6 @@ jobs:
         run: |
           ditto GPTK/redist/lib/ Libraries/Wine/lib/
 
-      - name: Copy Version .plist
-        run: |
-          cp -a WhiskyWineVersion.plist Libraries/
-
       - name: Install WineMono
         run: |
           mkdir Libraries/Wine/share/wine/mono
@@ -431,17 +427,3 @@ jobs:
           name: SUMS
           path: SUMS.sha
 
-      - name: Upload Libraries to WhiskyBucket
-        if: ${{ github.ref == 'refs/heads/7.7' }}
-        env:
-          RCLONE_CONFIG_R2_TYPE: s3
-          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
-          RCLONE_CONFIG_R2_ENV_AUTH: true
-          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.RCLONE_ACCESS_KEY_ID }}
-          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.RCLONE_SECRET_ACCESS_KEY }}
-          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.RCLONE_ENDPOINT }}
-        run: |
-          brew install rclone
-          rclone copy Libraries.tar.gz r2:whisky-bucket/Wine
-          rclone copy WhiskyWineVersion.plist r2:whisky-bucket/Wine
-          rclone copy SUMS.sha r2:whisky-bucket/Wine
