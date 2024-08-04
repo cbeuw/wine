@@ -25,6 +25,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Patch Crossover source
+        run: |
+          git apply - << EOF
+          diff --git a/programs/winedbg/resource.h b/programs/winedbg/resource.h
+          index 600a6689a4b..2a6da48bed0 100644
+          --- a/programs/winedbg/resource.h
+          +++ b/programs/winedbg/resource.h
+          @@ -20,7 +20,6 @@
+           
+           #include <windef.h>
+           #include <winuser.h>
+          -#include "distversion.h"
+           
+           #define IDD_CRASH_DLG   100
+           #define IDD_DETAILS_DLG 101
+          @@ -43,3 +42,6 @@
+           #define IDS_ALL_FILES         20
+           #define IDS_SAVE_ERROR        21
+           #define IDS_LOADING           22
+          +
+          +#define WINDEBUG_WHAT_HAPPENED_MESSAGE ""
+          +#define WINDEBUG_USER_SUGGESTION_MESSAGE ""
+          EOF
+
       - name: Use Xcode 15
         run: sudo xcode-select -switch /Applications/Xcode_15.2.app/Contents/Developer
 
