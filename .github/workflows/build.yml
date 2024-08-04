@@ -21,7 +21,7 @@ env:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -48,9 +48,6 @@ jobs:
           +#define WINDEBUG_WHAT_HAPPENED_MESSAGE ""
           +#define WINDEBUG_USER_SUGGESTION_MESSAGE ""
           EOF
-
-      - name: Use Xcode 15
-        run: sudo xcode-select -switch /Applications/Xcode_15.2.app/Contents/Developer
 
       - name: Install Homebrew Packages
         continue-on-error: true
