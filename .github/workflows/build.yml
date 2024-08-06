@@ -219,17 +219,17 @@ jobs:
               "libMoltenVK"
               "libnettle.8"
               "libogg.0"
-              "libopenvino.2420"
-              "libopenvino_c.2420"
-              "libopenvino_onnx_frontend.2420"
-              "libopenvino_paddle_frontend.2420"
-              "libopenvino_pytorch_frontend.2420"
-              "libopenvino_tensorflow_frontend.2420"
-              "libopenvino_tensorflow_lite_frontend.2420"
+              "libopenvino.+([0-9])"
+              "libopenvino_c.+([0-9])"
+              "libopenvino_onnx_frontend.+([0-9])"
+              "libopenvino_paddle_frontend.+([0-9])"
+              "libopenvino_pytorch_frontend.+([0-9])"
+              "libopenvino_tensorflow_frontend.+([0-9])"
+              "libopenvino_tensorflow_lite_frontend.+([0-9])"
               "liborc-0.4.0"
               "libp11-kit.0"
               "libpcre2-8.0"
-              "libpostproc.57"
+              "libpostproc.+([0-9])"
               "libpng16.16"
               "libpugixml.1"
               "librav1e.0.7"
@@ -253,21 +253,21 @@ jobs:
               "libXdmcp.6"
               "libX11.6"
               "libX11-xcb.1"
-              "libx264.164"
-              "libx265.209"
+              "libx264.+([0-9])"
+              "libx265.+([0-9])"
               "libxcb.1"
               "libzimg.2"
               "libzmq.5"
           )
 
           FFMPEG_LIBS=(
-            "libavfilter.9"
-            "libavformat.60"
-            "libavcodec.60"
-            "libavutil.58"
-            "libpostproc.57"
-            "libswresample.4"
-            "libswscale.7"
+            "libavfilter.+([0-9])"
+            "libavformat.+([0-9])"
+            "libavcodec.+([0-9])"
+            "libavutil.+([0-9])"
+            "libpostproc.+([0-9])"
+            "libswresample.+([0-9])"
+            "libswscale.+([0-9])"
           )
 
           GSTREAMER_LIBS=(
@@ -292,21 +292,23 @@ jobs:
               "libgstwavparse"
           )
 
+          shopt -s extglob
+
           for i in "${LIBS[@]}"
           do
-              cp -Lr $(brew --prefix)/lib/"$i".dylib Libraries/Wine/lib
+              cp -Lr $(brew --prefix)/lib/$i.dylib Libraries/Wine/lib
           done
 
           for i in "${FFMPEG_LIBS[@]}"
           do
-              cp -Lr $(brew --prefix ffmpeg@6)/lib/"$i".dylib Libraries/Wine/lib
+              cp -Lr $(brew --prefix ffmpeg@6)/lib/$i.dylib Libraries/Wine/lib
           done
 
           mkdir Libraries/Wine/lib/gstreamer-1.0
 
           for i in "${GSTREAMER_LIBS[@]}"
           do
-              cp -Lr $(brew --prefix gstreamer)/lib/gstreamer-1.0/"$i".dylib Libraries/Wine/lib/gstreamer-1.0
+              cp -Lr $(brew --prefix gstreamer)/lib/gstreamer-1.0/$i.dylib Libraries/Wine/lib/gstreamer-1.0
           done
 
           cp -a $(brew --prefix gstreamer)/lib/gstreamer-1.0/include Libraries/Wine/lib/gstreamer-1.0
